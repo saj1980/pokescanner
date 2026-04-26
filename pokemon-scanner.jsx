@@ -301,7 +301,7 @@ function CameraViewfinder({onCapture}){
 }
 
 // ─── Portfolio view ───────────────────────────────────────────────────────────
-function Portfolio({cards,onScanNew}){
+function Portfolio({cards,onScanNew,onDelete}){
   const total=cards.reduce((s,c)=>s+(c.estimatedValue||0),0);
   const sorted=[...cards].sort((a,b)=>b.estimatedValue-a.estimatedValue);
   return(
@@ -341,9 +341,10 @@ function Portfolio({cards,onScanNew}){
                 </div>
                 <span style={{background:`${tc}11`,border:`1px solid ${tc}22`,borderRadius:4,padding:"1px 6px",fontSize:8,color:tc,alignSelf:"flex-start"}}>{card.rarity}</span>
               </div>
-              <div style={{textAlign:"right",flexShrink:0,padding:"12px 14px",display:"flex",flexDirection:"column",justifyContent:"center",gap:3}}>
+              <div style={{textAlign:"right",flexShrink:0,padding:"12px 14px",display:"flex",flexDirection:"column",justifyContent:"center",gap:6}}>
                 <p style={{margin:0,fontSize:14,fontWeight:700,color:tc}}>{fmtDKK(card.estimatedValue)}</p>
                 <p style={{margin:0,fontSize:9,color:"#333"}}>est. værdi</p>
+                <button onClick={()=>onDelete(card.id)} style={{background:"transparent",border:"none",color:"#2a2a3a",fontSize:14,cursor:"pointer",padding:0,lineHeight:1}} title="Slet">🗑</button>
               </div>
             </div>
           );
@@ -420,6 +421,12 @@ export default function PokemonScanner(){
       if(val*USD_TO_DKK>=50){setShowConfetti(true);}
     }catch(err){setError(err.message);}
     finally{setLoading(false);}
+  };
+
+  const deleteFromPortfolio=(id)=>{
+    const updated=portfolio.filter(c=>c.id!==id);
+    setPortfolio(updated);
+    storage.set("portfolio",JSON.stringify(updated));
   };
 
   const saveToPortfolio=()=>{
@@ -617,7 +624,7 @@ export default function PokemonScanner(){
           <>
             <button onClick={()=>setAppView("home")} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:16}}>← Tilbage</button>
             {portfolio.length>0?(
-              <Portfolio cards={portfolio} onScanNew={scanNew}/>
+              <Portfolio cards={portfolio} onScanNew={scanNew} onDelete={deleteFromPortfolio}/>
             ):(
               <div style={{textAlign:"center",padding:"60px 20px"}}>
                 <div style={{fontSize:40,marginBottom:12,opacity:0.3}}>📁</div>
