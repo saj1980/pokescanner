@@ -19,15 +19,6 @@ const typeColors = {
   Poison:"#8E44AD",Flying:"#87CEEB",
 };
 
-const MOCK_RESULT = {
-  name:"N's Reshiram",set:"Journey Together",cardNumber:"167/159",year:"2025",
-  rarity:"Secret Rare",type:"Fire",condition:"Near Mint",isFirstEdition:false,
-  isShadowless:false,isHolo:true,
-  prices:{poor:12,played:20,nearMint:38,mint:55,psa10:180},
-  estimatedValue:38,confidence:"high",
-  notes:"N's Reshiram 167/159 er en Illustration Rare Secret fra Journey Together (2025). PSA 10-graderede eksemplarer handles for op til 1.240 kr.",
-  isRealCard:true,
-};
 
 // ─── Background removal ───────────────────────────────────────────────────────
 async function removeBackground(dataUrl) {
@@ -233,7 +224,6 @@ function Portfolio({cards,onScanNew}){
 export default function PokemonScanner(){
   const[portfolio,setPortfolio]=useState([]);
   const[appView,setAppView]=useState("home");
-  const[mode,setMode]=useState("demo");
 
   const[rawImage,setRawImage]=useState(null);
   const[cleanImage,setCleanImage]=useState(null);
@@ -266,15 +256,6 @@ export default function PokemonScanner(){
     reader.onload=(e)=>handleCapture(e.target.result);
     reader.readAsDataURL(file);
   },[handleCapture]);
-
-  const runDemo=async()=>{
-    setLoading(true);setError(null);setResult(null);setAnimateBars(false);
-    await new Promise(r=>setTimeout(r,2200));
-    setResult(MOCK_RESULT);
-    setTimeout(()=>setAnimateBars(true),100);
-    setLoading(false);
-    setAppView("result");
-  };
 
   const runLive=async()=>{
     if(!imageBase64)return;
@@ -341,16 +322,6 @@ export default function PokemonScanner(){
               <p style={{color:"#444",fontSize:10,letterSpacing:"0.15em",margin:0,textTransform:"uppercase"}}>TCG Card Appraisal · Powered by AI</p>
             </div>
 
-            <div style={{display:"flex",gap:6,marginBottom:16,background:"#0d0d22",borderRadius:10,padding:4,border:"1px solid #1a1a3a"}}>
-              {[["demo","🎭 Demo"],["live","⚡ Live API"]].map(([m,label])=>(
-                <button key={m} onClick={()=>setMode(m)} style={{flex:1,padding:"9px 0",border:"none",borderRadius:7,background:mode===m?m==="demo"?"linear-gradient(135deg,#C77DFF22,#4A90D922)":"linear-gradient(135deg,#F5C51822,#FF6B3522)":"transparent",color:mode===m?"#fff":"#444",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",outline:mode===m?`1px solid ${m==="demo"?"#C77DFF33":"#F5C51833"}`:"none"}}>{label}</button>
-              ))}
-            </div>
-
-            {mode==="demo"&&<div style={{marginBottom:14,padding:"9px 14px",background:"#0d0820",border:"1px solid #C77DFF22",borderRadius:8,fontSize:10,color:"#C77DFF77",lineHeight:1.6}}>
-              Demo viser N's Reshiram som eksempel — ingen API-nøgle krævet.
-            </div>}
-
             <button onClick={()=>setAppView("camera")} style={{
               width:"100%",padding:18,border:"none",borderRadius:14,
               background:"linear-gradient(135deg,#F5C518,#FF6B35)",
@@ -388,7 +359,6 @@ export default function PokemonScanner(){
             <div style={{marginTop:4}}><CameraViewfinder onCapture={handleCapture}/></div>
             <div style={{display:"flex",gap:8,marginTop:10}}>
               <button onClick={()=>fileRef.current?.click()} style={{flex:1,padding:13,background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:10,color:"#666",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>📁 Vælg fil</button>
-              {mode==="demo"&&<Btn onClick={runDemo} disabled={loading} gradient="linear-gradient(135deg,#C77DFF,#4A90D9)" style={{flex:1}}>{loading?"Simulerer...":"🎭 Demo"}</Btn>}
             </div>
             <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
           </>
@@ -412,11 +382,7 @@ export default function PokemonScanner(){
               )}
             </div>
             <div style={{display:"flex",gap:8,marginTop:10}}>
-              {mode==="demo"?(
-                <Btn onClick={runDemo} disabled={loading||removingBg} gradient="linear-gradient(135deg,#C77DFF,#4A90D9)" style={{flex:1}}>{loading?"Simulerer...":"🎭 Vurder (Demo)"}</Btn>
-              ):(
-                <Btn onClick={runLive} disabled={loading||removingBg||!imageBase64} gradient="linear-gradient(135deg,#F5C518,#FF6B35)" style={{flex:1,color:"#000"}}>{loading?"Analyserer...":"⚡ Vurder Kort"}</Btn>
-              )}
+              <Btn onClick={runLive} disabled={loading||removingBg||!imageBase64} gradient="linear-gradient(135deg,#F5C518,#FF6B35)" style={{flex:1,color:"#000"}}>{loading?"Analyserer...":"⚡ Vurder Kort"}</Btn>
             </div>
             {error&&<div style={{marginTop:12,padding:12,background:"#1a0000",border:"1px solid #440000",borderRadius:10,color:"#ff6666",fontSize:11}}>⚠️ {error}</div>}
           </>
@@ -472,7 +438,7 @@ export default function PokemonScanner(){
               </div>}
 
               <div style={{padding:"10px 20px",background:"#08081a"}}>
-                <p style={{margin:0,fontSize:9,color:"#2a2a3a"}}>⚠ {mode==="demo"?"Demo-data · DKK (USD×6,88)":"AI-estimater · DKK (USD×6,88) · verificér med TCGPlayer"}</p>
+                <p style={{margin:0,fontSize:9,color:"#2a2a3a"}}>⚠ AI-estimater · DKK (USD×6,88) · verificér med TCGPlayer</p>
               </div>
             </div>
 
