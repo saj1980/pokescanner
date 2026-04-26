@@ -332,7 +332,7 @@ function Portfolio({cards,onScanNew,onDelete}){
               <div style={{flex:1,minWidth:0,padding:"12px 12px",display:"flex",flexDirection:"column",justifyContent:"center",gap:3}}>
                 <div style={{display:"flex",alignItems:"baseline",gap:5}}>
                   <p style={{margin:0,fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.name}</p>
-                  <span style={{fontSize:9,color:tc,flexShrink:0}}>#{card.cardNumber}</span>
+                  <span style={{fontSize:9,color:tc,flexShrink:0}}>Nr. {card.cardNumber?.split("/")[0]}</span>
                 </div>
                 <div style={{display:"flex",gap:5,alignItems:"center"}}>
                   <span style={{fontSize:9,color:"#555"}}>{card.set}</span>
