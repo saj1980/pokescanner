@@ -330,12 +330,7 @@ export default function PokemonScanner(){
   const[showPaywall,setShowPaywall]=useState(false);
   const[pendingCard,setPendingCard]=useState(null);
 
-  // Login form state
-  const[loginStep,setLoginStep]=useState("email"); // email | otp
-  const[loginEmail,setLoginEmail]=useState("");
-  const[loginOtp,setLoginOtp]=useState("");
   const[loginError,setLoginError]=useState(null);
-  const[loginLoading,setLoginLoading]=useState(false);
 
   // App flow
   const[appView,setAppView]=useState("home");
@@ -373,6 +368,14 @@ export default function PokemonScanner(){
       if(session?.user){
         setUser(session.user);
         await loadPortfolio(session.user.id);
+        // Gem pending card der evt. blev sat i sessionStorage før OAuth-redirect
+        const raw=sessionStorage.getItem("pendingCard");
+        if(raw){
+          sessionStorage.removeItem("pendingCard");
+          const card=JSON.parse(raw);
+          await saveCardToDb(session.user.id,card);
+          setAppView("portfolio");
+        }
       }else{
         setUser(null);setPortfolio([]);
       }
@@ -382,37 +385,18 @@ export default function PokemonScanner(){
     return()=>subscription.unsubscribe();
   },[]);
 
-  // Save pending card after login
-  useEffect(()=>{
-    if(user&&pendingCard){
-      saveCardToDb(user.id,pendingCard).then(()=>{
-        setPendingCard(null);
-        setAppView("portfolio");
-      });
-    }
-  },[user,pendingCard]);
-
   const bumpScans=()=>{
     const n=scansUsed+1;
     setScansUsed(n);
     storage.set("scansUsed",String(n));
   };
 
-  const handleSendOtp=async()=>{
-    if(!loginEmail){setLoginError("Indtast en email.");return;}
-    setLoginLoading(true);setLoginError(null);
-    const{error}=await supabase.auth.signInWithOtp({email:loginEmail,options:{shouldCreateUser:true}});
-    setLoginLoading(false);
-    if(error){setLoginError(error.message);}else{setLoginStep("otp");}
-  };
-
-  const handleVerifyOtp=async()=>{
-    if(!loginOtp){setLoginError("Indtast koden.");return;}
-    setLoginLoading(true);setLoginError(null);
-    const{error}=await supabase.auth.verifyOtp({email:loginEmail,token:loginOtp,type:"email"});
-    setLoginLoading(false);
-    if(error){setLoginError("Ugyldig kode — prøv igen.");}
-    else{setLoginStep("email");setLoginOtp("");setAppView("home");}
+  const signInWithProvider=async(provider)=>{
+    if(pendingCard) sessionStorage.setItem("pendingCard",JSON.stringify(pendingCard));
+    await supabase.auth.signInWithOAuth({
+      provider,
+      options:{redirectTo:window.location.origin},
+    });
   };
 
   const handleUpgrade=()=>{setIsPro(true);setShowPaywall(false);};
@@ -587,36 +571,28 @@ export default function PokemonScanner(){
         {/* ── LOGIN ── */}
         {appView==="login"&&(
           <div style={{paddingTop:40}}>
-            <button onClick={()=>{setAppView(pendingCard?"result":"home");}} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:24}}>← Tilbage</button>
+            <button onClick={()=>setAppView(pendingCard?"result":"home")} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:24}}>← Tilbage</button>
             <div style={{background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:20,padding:32,textAlign:"center"}}>
               <div style={{fontSize:32,marginBottom:12}}>⚡</div>
-              {loginStep==="email"&&<>
-                <h2 style={{margin:"0 0 8px",fontSize:16,fontWeight:700,color:"#fff"}}>Log ind</h2>
-                <p style={{color:"#555",fontSize:11,margin:"0 0 24px",lineHeight:1.7}}>
-                  {pendingCard?"Gem kortet i din portefølje — log ind med email.":"Gem dine kort og se din portefølje."}
-                </p>
-                <input type="email" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)}
-                  onKeyDown={e=>e.key==="Enter"&&handleSendOtp()}
-                  placeholder="din@email.dk"
-                  style={{width:"100%",padding:"12px 14px",marginBottom:12,background:"#060610",border:"1px solid #1e1e3a",borderRadius:10,color:"#fff",fontSize:12,fontFamily:"'Space Mono',monospace",boxSizing:"border-box",outline:"none"}}
-                />
-                <button onClick={handleSendOtp} disabled={loginLoading} style={{width:"100%",padding:13,border:"none",borderRadius:10,background:"linear-gradient(135deg,#F5C518,#FF6B35)",color:"#000",fontSize:12,fontWeight:700,cursor:loginLoading?"wait":"pointer",fontFamily:"'Space Mono',monospace",marginBottom:8}}>
-                  {loginLoading?"Sender...":"Send engangskode →"}
+              <h2 style={{margin:"0 0 8px",fontSize:16,fontWeight:700,color:"#fff"}}>Log ind</h2>
+              <p style={{color:"#555",fontSize:11,margin:"0 0 28px",lineHeight:1.7}}>
+                {pendingCard?"Gem kortet i din portefølje — vælg login-metode.":"Gem dine kort og se din portefølje."}
+              </p>
+              {[
+                {provider:"google",  label:"Fortsæt med Google",    bg:"#fff",    color:"#111", border:"#ddd", icon:"G"},
+                {provider:"azure",   label:"Fortsæt med Microsoft", bg:"#2F2F2F", color:"#fff", border:"#444", icon:"⊞"},
+                {provider:"apple",   label:"Fortsæt med Apple",     bg:"#000",    color:"#fff", border:"#333", icon:""},
+              ].map(({provider,label,bg,color,border,icon})=>(
+                <button key={provider} onClick={()=>signInWithProvider(provider)} style={{
+                  display:"flex",alignItems:"center",gap:12,width:"100%",padding:"13px 16px",
+                  marginBottom:10,background:bg,border:`1px solid ${border}`,borderRadius:10,
+                  color,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Space Mono',monospace",
+                  textAlign:"left",
+                }}>
+                  <span style={{fontSize:16,width:20,textAlign:"center",flexShrink:0}}>{icon}</span>
+                  <span style={{flex:1,textAlign:"center"}}>{label}</span>
                 </button>
-              </>}
-              {loginStep==="otp"&&<>
-                <h2 style={{margin:"0 0 8px",fontSize:16,fontWeight:700,color:"#fff"}}>Tjek din email</h2>
-                <p style={{color:"#555",fontSize:11,margin:"0 0 24px",lineHeight:1.7}}>Vi har sendt en 6-cifret kode til<br/><strong style={{color:"#fff"}}>{loginEmail}</strong></p>
-                <input type="text" value={loginOtp} onChange={e=>setLoginOtp(e.target.value.replace(/\D/g,"").slice(0,6))}
-                  onKeyDown={e=>e.key==="Enter"&&handleVerifyOtp()}
-                  placeholder="123456" maxLength={6}
-                  style={{width:"100%",padding:"12px 14px",marginBottom:12,background:"#060610",border:"1px solid #1e1e3a",borderRadius:10,color:"#fff",fontSize:20,fontFamily:"'Space Mono',monospace",boxSizing:"border-box",outline:"none",letterSpacing:"0.3em",textAlign:"center"}}
-                />
-                <button onClick={handleVerifyOtp} disabled={loginLoading} style={{width:"100%",padding:13,border:"none",borderRadius:10,background:"linear-gradient(135deg,#F5C518,#FF6B35)",color:"#000",fontSize:12,fontWeight:700,cursor:loginLoading?"wait":"pointer",fontFamily:"'Space Mono',monospace",marginBottom:8}}>
-                  {loginLoading?"Verificerer...":"Bekræft kode →"}
-                </button>
-                <button onClick={()=>{setLoginStep("email");setLoginOtp("");setLoginError(null);}} style={{background:"transparent",border:"none",color:"#444",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>← Brug anden email</button>
-              </>}
+              ))}
               {loginError&&<p style={{color:"#FF6B35",fontSize:11,marginTop:12}}>{loginError}</p>}
             </div>
           </div>
