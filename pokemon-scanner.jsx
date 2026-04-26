@@ -1,5 +1,4 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { supabase } from "./src/supabase.js";
 
 // ─── Storage (localStorage wrapper) ──────────────────────────────────────────
 const storage = {
@@ -11,8 +10,6 @@ const storage = {
 // ─── Constants ───────────────────────────────────────────────────────────────
 const USD_TO_DKK = 6.88;
 const fmtDKK = (usd) => usd ? `${Math.round(usd * USD_TO_DKK)} kr.` : "—";
-const FREE_SCANS = 3;
-const PRICE_MO = 19;
 
 const typeColors = {
   Fire:"#FF6B35",Water:"#4A90D9",Grass:"#5BAD6F",Electric:"#F5C518",
@@ -21,33 +18,6 @@ const typeColors = {
   Ghost:"#7D3C98",Rock:"#8D6E63",Ground:"#D4A857",Bug:"#82AE46",
   Poison:"#8E44AD",Flying:"#87CEEB",
 };
-
-const MOCK_CARDS = [
-  {
-    id:"c1", scannedAt:"2026-04-20T10:22:00",
-    name:"N's Reshiram",set:"Journey Together",cardNumber:"167/159",year:"2025",
-    rarity:"Secret Rare",type:"Fire",condition:"Near Mint",isHolo:true,
-    prices:{poor:12,played:20,nearMint:38,mint:55,psa10:180},estimatedValue:38,confidence:"high",
-    notes:"Illustration Rare Secret fra Journey Together (2025). Meget eftertragtет artwork.",
-    isRealCard:true,image:null,
-  },
-  {
-    id:"c2", scannedAt:"2026-04-21T14:05:00",
-    name:"M Charizard EX",set:"XY — Flash Fire",cardNumber:"107/106",year:"2014",
-    rarity:"Secret Rare",type:"Fire",condition:"Lightly Played",isHolo:true,
-    prices:{poor:18,played:28,nearMint:55,mint:80,psa10:320},estimatedValue:28,confidence:"high",
-    notes:"Secret Rare Full Art fra XY Flash Fire (2014). Ikonisk kort med japansk tekst overlay.",
-    isRealCard:true,image:null,
-  },
-  {
-    id:"c3", scannedAt:"2026-04-25T09:30:00",
-    name:"Magearna",set:"Journey Together",cardNumber:"107/159",year:"2025",
-    rarity:"Rare",type:"Steel",condition:"Near Mint",isHolo:false,
-    prices:{poor:0.2,played:0.4,nearMint:0.75,mint:1.2,psa10:4.5},estimatedValue:0.75,confidence:"high",
-    notes:"Standard Rare fra Journey Together. Lav markedsværdi.",
-    isRealCard:true,image:null,
-  },
-];
 
 const MOCK_RESULT = {
   name:"N's Reshiram",set:"Journey Together",cardNumber:"167/159",year:"2025",
@@ -198,69 +168,12 @@ function CameraViewfinder({onCapture}){
   );
 }
 
-// ─── Scan counter badge ───────────────────────────────────────────────────────
-function ScanCounter({used,isPro}){
-  if(isPro) return(
-    <div style={{display:"flex",alignItems:"center",gap:6,background:"#0d1a0d",border:"1px solid #5BAD6F44",borderRadius:8,padding:"6px 12px"}}>
-      <span style={{fontSize:12}}>✓</span>
-      <span style={{fontSize:10,color:"#5BAD6F",letterSpacing:"0.1em"}}>PRO · Ubegrænset</span>
-    </div>
-  );
-  const left=Math.max(0,FREE_SCANS-used);
-  return(
-    <div style={{display:"flex",alignItems:"center",gap:8,background:"#0d0d22",border:`1px solid ${left===0?"#FF6B3544":"#1e1e3a"}`,borderRadius:8,padding:"6px 12px"}}>
-      <div style={{display:"flex",gap:4}}>
-        {[...Array(FREE_SCANS)].map((_,i)=>(
-          <div key={i} style={{width:8,height:8,borderRadius:"50%",background:i<used?"#333":i<FREE_SCANS?"#F5C518":"#1a1a2e",boxShadow:i<used?"none":"0 0 6px #F5C51866"}}/>
-        ))}
-      </div>
-      <span style={{fontSize:10,color:left===0?"#FF6B35":"#aaa",letterSpacing:"0.05em"}}>
-        {left===0?"Grænse nået":`${left} gratis scan${left===1?"":"s"} tilbage`}
-      </span>
-    </div>
-  );
-}
-
-// ─── Paywall modal ────────────────────────────────────────────────────────────
-function PaywallModal({onUpgrade,onClose}){
-  return(
-    <div style={{position:"fixed",inset:0,background:"#000000cc",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
-      <div style={{background:"#0d0d22",border:"1px solid #F5C51833",borderRadius:20,padding:32,maxWidth:380,width:"100%",textAlign:"center"}}>
-        <div style={{fontSize:40,marginBottom:12}}>⚡</div>
-        <h2 style={{margin:"0 0 8px",fontSize:18,fontWeight:700,background:"linear-gradient(135deg,#F5C518,#FF6B35)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Opgrader til Pro</h2>
-        <p style={{color:"#555",fontSize:11,margin:"0 0 24px",lineHeight:1.7}}>Du har brugt dine {FREE_SCANS} gratis scans. Opgrader for at fortsætte.</p>
-
-        <div style={{background:"#060610",border:"1px solid #1e1e3a",borderRadius:14,padding:20,marginBottom:24}}>
-          <p style={{margin:"0 0 4px",fontSize:28,fontWeight:700,color:"#fff"}}>{PRICE_MO} kr.<span style={{fontSize:13,color:"#555",fontWeight:400}}>/md</span></p>
-          <p style={{margin:"0 0 16px",fontSize:10,color:"#444",letterSpacing:"0.1em"}}>FAKTURERES MÅNEDLIGT</p>
-          {["Ubegrænset kortscanning","Portefølje med samlet værdi","Alle kort gemt under din profil","Prishistorik og trends"].map(f=>(
-            <div key={f} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,textAlign:"left"}}>
-              <span style={{color:"#5BAD6F",fontSize:14,flexShrink:0}}>✓</span>
-              <span style={{fontSize:11,color:"#888"}}>{f}</span>
-            </div>
-          ))}
-        </div>
-
-        <button onClick={onUpgrade} style={{
-          width:"100%",padding:15,border:"none",borderRadius:12,
-          background:"linear-gradient(135deg,#F5C518,#FF6B35)",
-          color:"#000",fontSize:13,fontWeight:700,letterSpacing:"0.1em",
-          cursor:"pointer",fontFamily:"'Space Mono',monospace",
-          boxShadow:"0 4px 24px #F5C51855",marginBottom:10,
-        }}>Aktiver Pro — {PRICE_MO} kr./md</button>
-        <button onClick={onClose} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>Ikke nu</button>
-      </div>
-    </div>
-  );
-}
-
 // ─── Portfolio view ───────────────────────────────────────────────────────────
 function Portfolio({cards,onScanNew}){
   const total=cards.reduce((s,c)=>s+(c.estimatedValue||0),0);
   const sorted=[...cards].sort((a,b)=>b.estimatedValue-a.estimatedValue);
   return(
     <div>
-      {/* Summary */}
       <div style={{background:"linear-gradient(135deg,#F5C51811,#FF6B3511)",border:"1px solid #F5C51822",borderRadius:16,padding:"20px 20px",marginBottom:16}}>
         <p style={{margin:"0 0 4px",fontSize:9,color:"#555",letterSpacing:"0.15em",textTransform:"uppercase"}}>Samlet Porteføljeværdi</p>
         <p style={{margin:"0 0 12px",fontSize:34,fontWeight:700,color:"#F5C518",textShadow:"0 0 30px #F5C51855"}}>{fmtDKK(total)}</p>
@@ -271,13 +184,11 @@ function Portfolio({cards,onScanNew}){
         </div>
       </div>
 
-      {/* Card list */}
       <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
         {sorted.map((card,idx)=>{
           const tc=typeColors[card.type]||"#888";
           return(
             <div key={card.id} style={{background:"#0d0d22",border:`1px solid ${tc}22`,borderRadius:14,overflow:"hidden",display:"flex",alignItems:"stretch"}}>
-              {/* Thumbnail */}
               <div style={{width:72,flexShrink:0,background:"repeating-conic-gradient(#111128 0% 25%,#0d0d22 0% 50%) 0 0/12px 12px",display:"flex",alignItems:"center",justifyContent:"center",borderRight:`1px solid ${tc}11`,position:"relative",minHeight:80}}>
                 {card.image?(
                   <img src={card.image} alt={card.name} style={{width:"100%",height:"100%",objectFit:"contain",filter:`drop-shadow(0 2px 8px rgba(0,0,0,0.8)) drop-shadow(0 0 6px ${tc}33)`,padding:4}}/>
@@ -286,7 +197,6 @@ function Portfolio({cards,onScanNew}){
                 )}
                 <div style={{position:"absolute",bottom:3,left:0,right:0,textAlign:"center",fontSize:8,color:tc,fontWeight:700,textShadow:"0 1px 4px #000"}}>{idx+1}</div>
               </div>
-              {/* Info */}
               <div style={{flex:1,minWidth:0,padding:"12px 12px",display:"flex",flexDirection:"column",justifyContent:"center",gap:3}}>
                 <div style={{display:"flex",alignItems:"baseline",gap:5}}>
                   <p style={{margin:0,fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.name}</p>
@@ -299,7 +209,6 @@ function Portfolio({cards,onScanNew}){
                 </div>
                 <span style={{background:`${tc}11`,border:`1px solid ${tc}22`,borderRadius:4,padding:"1px 6px",fontSize:8,color:tc,alignSelf:"flex-start"}}>{card.rarity}</span>
               </div>
-              {/* Value */}
               <div style={{textAlign:"right",flexShrink:0,padding:"12px 14px",display:"flex",flexDirection:"column",justifyContent:"center",gap:3}}>
                 <p style={{margin:0,fontSize:14,fontWeight:700,color:tc}}>{fmtDKK(card.estimatedValue)}</p>
                 <p style={{margin:0,fontSize:9,color:"#333"}}>est. værdi</p>
@@ -322,21 +231,10 @@ function Portfolio({cards,onScanNew}){
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function PokemonScanner(){
-  // Auth state
-  const[user,setUser]=useState(null);
-  const[isPro,setIsPro]=useState(false);
-  const[scansUsed,setScansUsed]=useState(0);
   const[portfolio,setPortfolio]=useState([]);
-  const[showPaywall,setShowPaywall]=useState(false);
-  const[pendingCard,setPendingCard]=useState(null);
-
-  const[loginError,setLoginError]=useState(null);
-
-  // App flow
   const[appView,setAppView]=useState("home");
   const[mode,setMode]=useState("demo");
 
-  // Scan state
   const[rawImage,setRawImage]=useState(null);
   const[cleanImage,setCleanImage]=useState(null);
   const[imageBase64,setImageBase64]=useState(null);
@@ -348,76 +246,19 @@ export default function PokemonScanner(){
 
   const fileRef=useRef();
 
-  const loadPortfolio=async(userId)=>{
-    const{data}=await supabase.from("cards").select("*").eq("user_id",userId).order("scanned_at",{ascending:false});
-    if(data) setPortfolio(data.map(r=>({...r.data,id:r.id,scannedAt:r.scanned_at})));
-  };
-
-  const saveCardToDb=async(userId,card)=>{
-    const{data,error}=await supabase.from("cards").insert({user_id:userId,data:card}).select().single();
-    if(!error&&data) setPortfolio(p=>[{...data.data,id:data.id,scannedAt:data.scanned_at},...p]);
-    return !error;
-  };
-
-  // Auth state listener
   useEffect(()=>{
-    supabase.auth.getSession().then(({data:{session}})=>{
-      if(session?.user){setUser(session.user);loadPortfolio(session.user.id);}
-    });
-    const{data:{subscription}}=supabase.auth.onAuthStateChange(async(_event,session)=>{
-      if(session?.user){
-        setUser(session.user);
-        await loadPortfolio(session.user.id);
-        // Gem pending card der evt. blev sat i sessionStorage før OAuth-redirect
-        const raw=sessionStorage.getItem("pendingCard");
-        if(raw){
-          sessionStorage.removeItem("pendingCard");
-          const card=JSON.parse(raw);
-          await saveCardToDb(session.user.id,card);
-          setAppView("portfolio");
-        }
-      }else{
-        setUser(null);setPortfolio([]);
-      }
-    });
-    const sc=storage.get("scansUsed");
-    if(sc) setScansUsed(parseInt(sc.value)||0);
-    return()=>subscription.unsubscribe();
+    const saved=storage.get("portfolio");
+    if(saved){try{setPortfolio(JSON.parse(saved.value));}catch{}}
   },[]);
 
-  const bumpScans=()=>{
-    const n=scansUsed+1;
-    setScansUsed(n);
-    storage.set("scansUsed",String(n));
-  };
-
-  const signInWithProvider=async(provider)=>{
-    if(pendingCard) sessionStorage.setItem("pendingCard",JSON.stringify(pendingCard));
-    await supabase.auth.signInWithOAuth({
-      provider,
-      options:{redirectTo:window.location.origin},
-    });
-  };
-
-  const handleUpgrade=()=>{setIsPro(true);setShowPaywall(false);};
-
-  const handleLogout=async()=>{
-    await supabase.auth.signOut();
-    setUser(null);setIsPro(false);setPortfolio([]);
-    setAppView("home");
-  };
-
-  const canScan=isPro||(scansUsed<FREE_SCANS);
-
   const handleCapture=useCallback(async(dataUrl)=>{
-    if(!canScan){setShowPaywall(true);return;}
     setRawImage(dataUrl);setAppView("preview");
     setRemovingBg(true);setError(null);setResult(null);setAnimateBars(false);
     const clean=await removeBackground(dataUrl);
     setCleanImage(clean);setRemovingBg(false);
     const b64=await toJpegBase64(dataUrl);
     setImageBase64(b64);
-  },[canScan]);
+  },[]);
 
   const handleFile=useCallback(async(file)=>{
     if(!file||!file.type.startsWith("image/"))return;
@@ -430,7 +271,6 @@ export default function PokemonScanner(){
     setLoading(true);setError(null);setResult(null);setAnimateBars(false);
     await new Promise(r=>setTimeout(r,2200));
     setResult(MOCK_RESULT);
-    bumpScans();
     setTimeout(()=>setAnimateBars(true),100);
     setLoading(false);
     setAppView("result");
@@ -449,29 +289,22 @@ export default function PokemonScanner(){
       if(!response.ok){let msg=`API fejl ${response.status}`;try{msg=JSON.parse(text).error||msg;}catch{}throw new Error(msg);}
       let parsed;
       try{parsed=JSON.parse(text);}catch{throw new Error(`Uventet svar: ${text.slice(0,120)}`);}
-
       setResult(parsed);
-      bumpScans();
       setTimeout(()=>setAnimateBars(true),100);
       setAppView("result");
     }catch(err){setError(err.message);}
     finally{setLoading(false);}
   };
 
-  const saveToPortfolio=async()=>{
-    const card={...result,scannedAt:new Date().toISOString(),image:cleanImage};
-    if(!user){
-      setPendingCard(card);
-      setLoginStep("email");setLoginError(null);setLoginOtp("");
-      setAppView("login");
-      return;
-    }
-    await saveCardToDb(user.id,card);
+  const saveToPortfolio=()=>{
+    const card={...result,id:Date.now().toString(),scannedAt:new Date().toISOString(),image:cleanImage};
+    const updated=[card,...portfolio];
+    setPortfolio(updated);
+    storage.set("portfolio",JSON.stringify(updated));
     setAppView("portfolio");
   };
 
   const scanNew=()=>{
-    if(!canScan){setShowPaywall(true);return;}
     setAppView("camera");setResult(null);setRawImage(null);setCleanImage(null);setError(null);setAnimateBars(false);
   };
 
@@ -480,13 +313,10 @@ export default function PokemonScanner(){
   const prices=result?.prices||{};
   const maxPrice=Math.max(prices.poor||0,prices.played||0,prices.nearMint||0,prices.mint||0,prices.psa10||0)*1.1||10;
 
-  // ── RENDER ──────────────────────────────────────────────────────────────────
   return(
     <div style={{minHeight:"100vh",background:"#0a0a1a",fontFamily:"'Space Mono',monospace",color:"#fff",padding:"0 0 80px",position:"relative"}}>
       <div style={{position:"fixed",inset:0,background:"radial-gradient(ellipse at 20% 20%,#1a0533 0%,transparent 50%),radial-gradient(ellipse at 80% 80%,#001a3a 0%,transparent 50%)",pointerEvents:"none",zIndex:0}}/>
       <div style={{position:"fixed",inset:0,backgroundImage:"radial-gradient(circle at 1px 1px,#ffffff05 1px,transparent 0)",backgroundSize:"40px 40px",pointerEvents:"none",zIndex:0}}/>
-
-      {showPaywall&&<PaywallModal onUpgrade={handleUpgrade} onClose={()=>setShowPaywall(false)}/>}
 
       <div style={{position:"relative",zIndex:1,maxWidth:520,margin:"0 auto",padding:"0 20px"}}>
 
@@ -495,19 +325,11 @@ export default function PokemonScanner(){
           <div style={{cursor:"pointer"}} onClick={()=>setAppView("home")}>
             <span style={{fontSize:18,fontWeight:700,background:"linear-gradient(135deg,#F5C518,#FF6B35)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"0.08em"}}>⚡ PokéScanner</span>
           </div>
-          <div style={{display:"flex",gap:8,alignItems:"center"}}>
-            {user&&<button onClick={()=>setAppView("portfolio")} style={{background:"transparent",border:"1px solid #1e1e3a",borderRadius:8,padding:"6px 12px",color:"#666",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+          {portfolio.length>0&&(
+            <button onClick={()=>setAppView("portfolio")} style={{background:"transparent",border:"1px solid #1e1e3a",borderRadius:8,padding:"6px 12px",color:"#666",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
               📁 {portfolio.length} kort
-            </button>}
-            {user?(
-              <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                <span style={{fontSize:10,color:isPro?"#5BAD6F":"#555"}}>{isPro?"PRO · ":""}{user.email?.split("@")[0]}</span>
-                <button onClick={handleLogout} style={{background:"transparent",border:"none",color:"#333",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>ud</button>
-              </div>
-            ):(
-              <button onClick={()=>setAppView("login")} style={{background:"transparent",border:"1px solid #1e1e3a",borderRadius:8,padding:"6px 12px",color:"#555",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>Log ind</button>
-            )}
-          </div>
+            </button>
+          )}
         </div>
 
         {/* ── HOME ── */}
@@ -516,8 +338,7 @@ export default function PokemonScanner(){
             <div style={{textAlign:"center",padding:"20px 0 28px"}}>
               <div style={{fontSize:44,marginBottom:8}}>⚡</div>
               <h1 style={{fontSize:24,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",margin:"0 0 8px",background:"linear-gradient(135deg,#F5C518,#FF6B35,#C77DFF)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>PokéScanner</h1>
-              <p style={{color:"#444",fontSize:10,letterSpacing:"0.15em",margin:"0 0 24px",textTransform:"uppercase"}}>TCG Card Appraisal · Powered by AI</p>
-              <ScanCounter used={scansUsed} isPro={isPro}/>
+              <p style={{color:"#444",fontSize:10,letterSpacing:"0.15em",margin:0,textTransform:"uppercase"}}>TCG Card Appraisal · Powered by AI</p>
             </div>
 
             <div style={{display:"flex",gap:6,marginBottom:16,background:"#0d0d22",borderRadius:10,padding:4,border:"1px solid #1a1a3a"}}>
@@ -530,28 +351,20 @@ export default function PokemonScanner(){
               Demo viser N's Reshiram som eksempel — ingen API-nøgle krævet.
             </div>}
 
-            <button onClick={()=>{if(!canScan){setShowPaywall(true);}else{setAppView("camera");}}} style={{
+            <button onClick={()=>setAppView("camera")} style={{
               width:"100%",padding:18,border:"none",borderRadius:14,
-              background:canScan?"linear-gradient(135deg,#F5C518,#FF6B35)":"#1a1a2e",
-              color:canScan?"#000":"#444",fontSize:13,fontWeight:700,letterSpacing:"0.1em",
+              background:"linear-gradient(135deg,#F5C518,#FF6B35)",
+              color:"#000",fontSize:13,fontWeight:700,letterSpacing:"0.1em",
               cursor:"pointer",fontFamily:"'Space Mono',monospace",
-              boxShadow:canScan?"0 4px 24px #F5C51855":"none",marginBottom:10,
-            }}>{canScan?"📸 Scan et kort":"🔒 Opgrader for at fortsætte"}</button>
+              boxShadow:"0 4px 24px #F5C51855",marginBottom:10,
+            }}>📸 Scan et kort</button>
 
-            {!isPro&&scansUsed>=FREE_SCANS&&(
-              <button onClick={()=>setShowPaywall(true)} style={{width:"100%",padding:14,border:"1px solid #F5C51833",borderRadius:12,background:"transparent",color:"#F5C518",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
-                ⚡ Opgrader til Pro — {PRICE_MO} kr./md
-              </button>
-            )}
-
-            {/* Demo portfolio preview */}
-            {portfolio.length===0&&(
+            {portfolio.length===0?(
               <div style={{marginTop:24,background:"#0d0d22",border:"1px solid #1a1a3a",borderRadius:14,padding:20,textAlign:"center"}}>
                 <p style={{color:"#2a2a3a",fontSize:11,margin:"0 0 8px"}}>Din portefølje er tom</p>
                 <p style={{color:"#1e1e3a",fontSize:10,margin:0}}>Scan dit første kort for at komme i gang</p>
               </div>
-            )}
-            {portfolio.length>0&&(
+            ):(
               <div style={{marginTop:20}}>
                 <p style={{fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase",margin:"0 0 10px"}}>Portefølje preview</p>
                 <div style={{background:"#0d0d22",border:"1px solid #1a1a3a",borderRadius:14,padding:"14px 16px",cursor:"pointer"}} onClick={()=>setAppView("portfolio")}>
@@ -568,42 +381,11 @@ export default function PokemonScanner(){
           </>
         )}
 
-        {/* ── LOGIN ── */}
-        {appView==="login"&&(
-          <div style={{paddingTop:40}}>
-            <button onClick={()=>setAppView(pendingCard?"result":"home")} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:24}}>← Tilbage</button>
-            <div style={{background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:20,padding:32,textAlign:"center"}}>
-              <div style={{fontSize:32,marginBottom:12}}>⚡</div>
-              <h2 style={{margin:"0 0 8px",fontSize:16,fontWeight:700,color:"#fff"}}>Log ind</h2>
-              <p style={{color:"#555",fontSize:11,margin:"0 0 28px",lineHeight:1.7}}>
-                {pendingCard?"Gem kortet i din portefølje — vælg login-metode.":"Gem dine kort og se din portefølje."}
-              </p>
-              {[
-                {provider:"google",  label:"Fortsæt med Google",    bg:"#fff",    color:"#111", border:"#ddd", icon:"G"},
-                {provider:"azure",   label:"Fortsæt med Microsoft", bg:"#2F2F2F", color:"#fff", border:"#444", icon:"⊞"},
-                {provider:"apple",   label:"Fortsæt med Apple",     bg:"#000",    color:"#fff", border:"#333", icon:""},
-              ].map(({provider,label,bg,color,border,icon})=>(
-                <button key={provider} onClick={()=>signInWithProvider(provider)} style={{
-                  display:"flex",alignItems:"center",gap:12,width:"100%",padding:"13px 16px",
-                  marginBottom:10,background:bg,border:`1px solid ${border}`,borderRadius:10,
-                  color,fontSize:12,fontWeight:600,cursor:"pointer",fontFamily:"'Space Mono',monospace",
-                  textAlign:"left",
-                }}>
-                  <span style={{fontSize:16,width:20,textAlign:"center",flexShrink:0}}>{icon}</span>
-                  <span style={{flex:1,textAlign:"center"}}>{label}</span>
-                </button>
-              ))}
-              {loginError&&<p style={{color:"#FF6B35",fontSize:11,marginTop:12}}>{loginError}</p>}
-            </div>
-          </div>
-        )}
-
         {/* ── CAMERA ── */}
         {appView==="camera"&&(
           <>
             <button onClick={()=>setAppView("home")} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:12}}>← Tilbage</button>
-            <ScanCounter used={scansUsed} isPro={isPro}/>
-            <div style={{marginTop:12}}><CameraViewfinder onCapture={handleCapture}/></div>
+            <div style={{marginTop:4}}><CameraViewfinder onCapture={handleCapture}/></div>
             <div style={{display:"flex",gap:8,marginTop:10}}>
               <button onClick={()=>fileRef.current?.click()} style={{flex:1,padding:13,background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:10,color:"#666",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>📁 Vælg fil</button>
               {mode==="demo"&&<Btn onClick={runDemo} disabled={loading} gradient="linear-gradient(135deg,#C77DFF,#4A90D9)" style={{flex:1}}>{loading?"Simulerer...":"🎭 Demo"}</Btn>}
@@ -694,7 +476,6 @@ export default function PokemonScanner(){
               </div>
             </div>
 
-            {/* Actions */}
             <div style={{display:"flex",gap:8,marginBottom:8}}>
               <button onClick={saveToPortfolio} style={{
                 flex:1,padding:13,border:"none",borderRadius:10,
