@@ -1,0 +1,698 @@
+import { useState, useRef, useCallback, useEffect } from "react";
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const USD_TO_DKK = 6.88;
+const fmtDKK = (usd) => usd ? `${Math.round(usd * USD_TO_DKK)} kr.` : "—";
+const FREE_SCANS = 3;
+const PRICE_MO = 19;
+
+const typeColors = {
+  Fire:"#FF6B35",Water:"#4A90D9",Grass:"#5BAD6F",Electric:"#F5C518",
+  Psychic:"#C77DFF",Fighting:"#C0392B",Dark:"#8B9BB4",Steel:"#95A5A6",
+  Dragon:"#6C3483",Fairy:"#FF85A1",Normal:"#A0A0A0",Ice:"#85C1E9",
+  Ghost:"#7D3C98",Rock:"#8D6E63",Ground:"#D4A857",Bug:"#82AE46",
+  Poison:"#8E44AD",Flying:"#87CEEB",
+};
+
+const MOCK_CARDS = [
+  {
+    id:"c1", scannedAt:"2026-04-20T10:22:00",
+    name:"N's Reshiram",set:"Journey Together",cardNumber:"167/159",year:"2025",
+    rarity:"Secret Rare",type:"Fire",condition:"Near Mint",isHolo:true,
+    prices:{poor:12,played:20,nearMint:38,mint:55,psa10:180},estimatedValue:38,confidence:"high",
+    notes:"Illustration Rare Secret fra Journey Together (2025). Meget eftertragtет artwork.",
+    isRealCard:true,image:null,
+  },
+  {
+    id:"c2", scannedAt:"2026-04-21T14:05:00",
+    name:"M Charizard EX",set:"XY — Flash Fire",cardNumber:"107/106",year:"2014",
+    rarity:"Secret Rare",type:"Fire",condition:"Lightly Played",isHolo:true,
+    prices:{poor:18,played:28,nearMint:55,mint:80,psa10:320},estimatedValue:28,confidence:"high",
+    notes:"Secret Rare Full Art fra XY Flash Fire (2014). Ikonisk kort med japansk tekst overlay.",
+    isRealCard:true,image:null,
+  },
+  {
+    id:"c3", scannedAt:"2026-04-25T09:30:00",
+    name:"Magearna",set:"Journey Together",cardNumber:"107/159",year:"2025",
+    rarity:"Rare",type:"Steel",condition:"Near Mint",isHolo:false,
+    prices:{poor:0.2,played:0.4,nearMint:0.75,mint:1.2,psa10:4.5},estimatedValue:0.75,confidence:"high",
+    notes:"Standard Rare fra Journey Together. Lav markedsværdi.",
+    isRealCard:true,image:null,
+  },
+];
+
+const MOCK_RESULT = {
+  name:"N's Reshiram",set:"Journey Together",cardNumber:"167/159",year:"2025",
+  rarity:"Secret Rare",type:"Fire",condition:"Near Mint",isFirstEdition:false,
+  isShadowless:false,isHolo:true,
+  prices:{poor:12,played:20,nearMint:38,mint:55,psa10:180},
+  estimatedValue:38,confidence:"high",
+  notes:"N's Reshiram 167/159 er en Illustration Rare Secret fra Journey Together (2025). PSA 10-graderede eksemplarer handles for op til 1.240 kr.",
+  isRealCard:true,
+};
+
+// ─── Background removal ───────────────────────────────────────────────────────
+async function removeBackground(dataUrl) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const W=img.width,H=img.height;
+      const canvas=document.createElement("canvas");
+      canvas.width=W; canvas.height=H;
+      const ctx=canvas.getContext("2d");
+      ctx.drawImage(img,0,0);
+      const imageData=ctx.getImageData(0,0,W,H);
+      const data=imageData.data;
+      const corners=[[0,0],[W-1,0],[0,H-1],[W-1,H-1],[Math.floor(W*.05),Math.floor(H*.05)],[Math.floor(W*.95),Math.floor(H*.05)],[Math.floor(W*.05),Math.floor(H*.95)],[Math.floor(W*.95),Math.floor(H*.95)]];
+      let rS=0,gS=0,bS=0;
+      corners.forEach(([x,y])=>{const i=(y*W+x)*4;rS+=data[i];gS+=data[i+1];bS+=data[i+2];});
+      const bgR=rS/corners.length,bgG=gS/corners.length,bgB=bS/corners.length;
+      const visited=new Uint8Array(W*H);
+      const queue=[];
+      const isBg=(idx)=>{const r=data[idx],g=data[idx+1],b=data[idx+2];return Math.abs(r-bgR)+Math.abs(g-bgG)+Math.abs(b-bgB)<165;};
+      for(let x=0;x<W;x++){queue.push([x,0]);queue.push([x,H-1]);}
+      for(let y=1;y<H-1;y++){queue.push([0,y]);queue.push([W-1,y]);}
+      while(queue.length){
+        const[x,y]=queue.pop();
+        if(x<0||x>=W||y<0||y>=H)continue;
+        const pos=y*W+x;
+        if(visited[pos])continue;
+        visited[pos]=1;
+        const idx=pos*4;
+        if(isBg(idx)){data[idx+3]=0;queue.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);}
+      }
+      ctx.putImageData(imageData,0,0);
+      resolve(canvas.toDataURL("image/png"));
+    };
+    img.src=dataUrl;
+  });
+}
+
+async function toJpegBase64(dataUrl) {
+  return new Promise((resolve)=>{
+    const img=new Image();
+    img.onload=()=>{
+      const c=document.createElement("canvas");
+      c.width=img.width;c.height=img.height;
+      c.getContext("2d").drawImage(img,0,0);
+      resolve(c.toDataURL("image/jpeg",0.92).split(",")[1]);
+    };
+    img.src=dataUrl;
+  });
+}
+
+// ─── Small components ─────────────────────────────────────────────────────────
+function StarRating({count}){
+  return <div style={{display:"flex",gap:2}}>{[1,2,3,4,5,6].map(i=><span key={i} style={{fontSize:13,color:i<=count?"#F5C518":"#2a2a3a",textShadow:i<=count?"0 0 8px #F5C51888":"none"}}>★</span>)}</div>;
+}
+
+function PriceBar({label,value,max,color,animate}){
+  const pct=value&&max>0?Math.min((value/max)*100,100):0;
+  return(
+    <div style={{marginBottom:9}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:11,color:"#888"}}>
+        <span>{label}</span><span style={{color:"#fff",fontWeight:700}}>{fmtDKK(value)}</span>
+      </div>
+      <div style={{height:5,background:"#111128",borderRadius:3,overflow:"hidden"}}>
+        <div style={{width:animate?`${pct}%`:"0%",height:"100%",background:`linear-gradient(90deg,${color}66,${color})`,borderRadius:3,transition:"width 1.2s cubic-bezier(0.4,0,0.2,1)"}}/>
+      </div>
+    </div>
+  );
+}
+
+function TypeBadge({type}){
+  const c=typeColors[type]||"#888";
+  return <span style={{background:`${c}22`,border:`1px solid ${c}44`,borderRadius:6,padding:"4px 10px",fontSize:10,color:c,fontWeight:700}}>{type}</span>;
+}
+
+function Tag({children}){
+  return <span style={{background:"#111128",border:"1px solid #1e1e38",borderRadius:5,padding:"3px 8px",fontSize:9,color:"#777"}}>{children}</span>;
+}
+
+function Btn({onClick,disabled,gradient,children,style={}}){
+  return(
+    <button onClick={onClick} disabled={disabled} style={{
+      padding:"13px 16px",border:"none",borderRadius:10,
+      background:disabled?"#1a1a2e":gradient||"#0d0d22",
+      color:disabled?"#333":"#fff",fontSize:11,fontWeight:700,
+      letterSpacing:"0.08em",textTransform:"uppercase",
+      cursor:disabled?"not-allowed":"pointer",
+      fontFamily:"'Space Mono',monospace",transition:"all 0.2s",
+      boxShadow:(!disabled&&gradient)?`0 4px 20px ${gradient.includes("F5C518")?"#F5C51844":"#C77DFF44"}`:"none",
+      ...style,
+    }}>{children}</button>
+  );
+}
+
+// ─── Camera viewfinder ────────────────────────────────────────────────────────
+function CameraViewfinder({onCapture}){
+  const videoRef=useRef();
+  const[ready,setReady]=useState(false);
+  const[camErr,setCamErr]=useState(null);
+  useEffect(()=>{
+    let stream;
+    (async()=>{
+      try{
+        stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment",width:{ideal:1280},height:{ideal:960}}});
+        videoRef.current.srcObject=stream;
+        videoRef.current.play();
+        setReady(true);
+      }catch(e){setCamErr("Kamera ikke tilgængeligt — brug fil-upload.");}
+    })();
+    return()=>{if(stream)stream.getTracks().forEach(t=>t.stop());};
+  },[]);
+  const capture=()=>{
+    const v=videoRef.current;
+    const c=document.createElement("canvas");
+    c.width=v.videoWidth;c.height=v.videoHeight;
+    c.getContext("2d").drawImage(v,0,0);
+    onCapture(c.toDataURL("image/jpeg",0.92));
+  };
+  return(
+    <div style={{position:"relative",width:"100%",aspectRatio:"3/4",maxHeight:440,background:"#060610",borderRadius:14,overflow:"hidden"}}>
+      <video ref={videoRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} muted playsInline/>
+      {ready&&<>
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,#000000bb 0%,transparent 18%,transparent 82%,#000000bb 100%)",pointerEvents:"none"}}/>
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(to right,#000000bb 0%,transparent 12%,transparent 88%,#000000bb 100%)",pointerEvents:"none"}}/>
+        <div style={{position:"absolute",top:"8%",left:"12%",right:"12%",bottom:"12%",pointerEvents:"none"}}>
+          <div style={{position:"absolute",inset:0,borderRadius:10,boxShadow:"0 0 0 2px #F5C51866,0 0 20px #F5C51833",animation:"pulse 2s ease-in-out infinite"}}/>
+          {[{top:0,left:0,borderTop:"3px solid #F5C518",borderLeft:"3px solid #F5C518",borderRadius:"6px 0 0 0"},{top:0,right:0,borderTop:"3px solid #F5C518",borderRight:"3px solid #F5C518",borderRadius:"0 6px 0 0"},{bottom:0,left:0,borderBottom:"3px solid #F5C518",borderLeft:"3px solid #F5C518",borderRadius:"0 0 0 6px"},{bottom:0,right:0,borderBottom:"3px solid #F5C518",borderRight:"3px solid #F5C518",borderRadius:"0 0 6px 0"}].map((s,i)=><div key={i} style={{position:"absolute",width:28,height:28,...s}}/>)}
+          <div style={{position:"absolute",left:4,right:4,height:2,background:"linear-gradient(90deg,transparent,#F5C518cc,transparent)",animation:"scanline 2.5s ease-in-out infinite",borderRadius:1}}/>
+          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <p style={{margin:0,fontSize:11,color:"#ffffff44",letterSpacing:"0.12em",textTransform:"uppercase",textAlign:"center",textShadow:"0 1px 4px #000"}}>Placer kortet inden for rammen</p>
+          </div>
+        </div>
+        <button onClick={capture} style={{position:"absolute",bottom:20,left:"50%",transform:"translateX(-50%)",width:62,height:62,borderRadius:"50%",background:"linear-gradient(135deg,#F5C518,#FF6B35)",border:"3px solid #fff",cursor:"pointer",boxShadow:"0 4px 20px #00000088,0 0 20px #F5C51866",fontSize:22}}>📸</button>
+      </>}
+      {camErr&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}><p style={{color:"#555",fontSize:12,lineHeight:1.6,textAlign:"center"}}>{camErr}</p></div>}
+      {!ready&&!camErr&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}><p style={{color:"#333",fontSize:11,letterSpacing:"0.15em",textTransform:"uppercase"}}>Starter kamera...</p></div>}
+    </div>
+  );
+}
+
+// ─── Scan counter badge ───────────────────────────────────────────────────────
+function ScanCounter({used,isPro}){
+  if(isPro) return(
+    <div style={{display:"flex",alignItems:"center",gap:6,background:"#0d1a0d",border:"1px solid #5BAD6F44",borderRadius:8,padding:"6px 12px"}}>
+      <span style={{fontSize:12}}>✓</span>
+      <span style={{fontSize:10,color:"#5BAD6F",letterSpacing:"0.1em"}}>PRO · Ubegrænset</span>
+    </div>
+  );
+  const left=Math.max(0,FREE_SCANS-used);
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:8,background:"#0d0d22",border:`1px solid ${left===0?"#FF6B3544":"#1e1e3a"}`,borderRadius:8,padding:"6px 12px"}}>
+      <div style={{display:"flex",gap:4}}>
+        {[...Array(FREE_SCANS)].map((_,i)=>(
+          <div key={i} style={{width:8,height:8,borderRadius:"50%",background:i<used?"#333":i<FREE_SCANS?"#F5C518":"#1a1a2e",boxShadow:i<used?"none":"0 0 6px #F5C51866"}}/>
+        ))}
+      </div>
+      <span style={{fontSize:10,color:left===0?"#FF6B35":"#aaa",letterSpacing:"0.05em"}}>
+        {left===0?"Grænse nået":`${left} gratis scan${left===1?"":"s"} tilbage`}
+      </span>
+    </div>
+  );
+}
+
+// ─── Paywall modal ────────────────────────────────────────────────────────────
+function PaywallModal({onUpgrade,onClose}){
+  return(
+    <div style={{position:"fixed",inset:0,background:"#000000cc",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#0d0d22",border:"1px solid #F5C51833",borderRadius:20,padding:32,maxWidth:380,width:"100%",textAlign:"center"}}>
+        <div style={{fontSize:40,marginBottom:12}}>⚡</div>
+        <h2 style={{margin:"0 0 8px",fontSize:18,fontWeight:700,background:"linear-gradient(135deg,#F5C518,#FF6B35)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>Opgrader til Pro</h2>
+        <p style={{color:"#555",fontSize:11,margin:"0 0 24px",lineHeight:1.7}}>Du har brugt dine {FREE_SCANS} gratis scans. Opgrader for at fortsætte.</p>
+
+        <div style={{background:"#060610",border:"1px solid #1e1e3a",borderRadius:14,padding:20,marginBottom:24}}>
+          <p style={{margin:"0 0 4px",fontSize:28,fontWeight:700,color:"#fff"}}>{PRICE_MO} kr.<span style={{fontSize:13,color:"#555",fontWeight:400}}>/md</span></p>
+          <p style={{margin:"0 0 16px",fontSize:10,color:"#444",letterSpacing:"0.1em"}}>FAKTURERES MÅNEDLIGT</p>
+          {["Ubegrænset kortscanning","Portefølje med samlet værdi","Alle kort gemt under din profil","Prishistorik og trends"].map(f=>(
+            <div key={f} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,textAlign:"left"}}>
+              <span style={{color:"#5BAD6F",fontSize:14,flexShrink:0}}>✓</span>
+              <span style={{fontSize:11,color:"#888"}}>{f}</span>
+            </div>
+          ))}
+        </div>
+
+        <button onClick={onUpgrade} style={{
+          width:"100%",padding:15,border:"none",borderRadius:12,
+          background:"linear-gradient(135deg,#F5C518,#FF6B35)",
+          color:"#000",fontSize:13,fontWeight:700,letterSpacing:"0.1em",
+          cursor:"pointer",fontFamily:"'Space Mono',monospace",
+          boxShadow:"0 4px 24px #F5C51855",marginBottom:10,
+        }}>Aktiver Pro — {PRICE_MO} kr./md</button>
+        <button onClick={onClose} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>Ikke nu</button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Portfolio view ───────────────────────────────────────────────────────────
+function Portfolio({cards,onScanNew}){
+  const total=cards.reduce((s,c)=>s+(c.estimatedValue||0),0);
+  const sorted=[...cards].sort((a,b)=>b.estimatedValue-a.estimatedValue);
+  return(
+    <div>
+      {/* Summary */}
+      <div style={{background:"linear-gradient(135deg,#F5C51811,#FF6B3511)",border:"1px solid #F5C51822",borderRadius:16,padding:"20px 20px",marginBottom:16}}>
+        <p style={{margin:"0 0 4px",fontSize:9,color:"#555",letterSpacing:"0.15em",textTransform:"uppercase"}}>Samlet Porteføljeværdi</p>
+        <p style={{margin:"0 0 12px",fontSize:34,fontWeight:700,color:"#F5C518",textShadow:"0 0 30px #F5C51855"}}>{fmtDKK(total)}</p>
+        <div style={{display:"flex",gap:16}}>
+          <div><p style={{margin:0,fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:"0.1em"}}>Kort</p><p style={{margin:"2px 0 0",fontSize:16,fontWeight:700,color:"#fff"}}>{cards.length}</p></div>
+          <div><p style={{margin:0,fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:"0.1em"}}>Snit/kort</p><p style={{margin:"2px 0 0",fontSize:16,fontWeight:700,color:"#fff"}}>{fmtDKK(cards.length?total/cards.length:0)}</p></div>
+          <div><p style={{margin:0,fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:"0.1em"}}>Mest værd</p><p style={{margin:"2px 0 0",fontSize:16,fontWeight:700,color:"#fff"}}>{fmtDKK(sorted[0]?.estimatedValue)}</p></div>
+        </div>
+      </div>
+
+      {/* Card list */}
+      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+        {sorted.map((card,idx)=>{
+          const tc=typeColors[card.type]||"#888";
+          return(
+            <div key={card.id} style={{background:"#0d0d22",border:`1px solid ${tc}22`,borderRadius:14,overflow:"hidden",display:"flex",alignItems:"stretch"}}>
+              {/* Thumbnail */}
+              <div style={{width:72,flexShrink:0,background:"repeating-conic-gradient(#111128 0% 25%,#0d0d22 0% 50%) 0 0/12px 12px",display:"flex",alignItems:"center",justifyContent:"center",borderRight:`1px solid ${tc}11`,position:"relative",minHeight:80}}>
+                {card.image?(
+                  <img src={card.image} alt={card.name} style={{width:"100%",height:"100%",objectFit:"contain",filter:`drop-shadow(0 2px 8px rgba(0,0,0,0.8)) drop-shadow(0 0 6px ${tc}33)`,padding:4}}/>
+                ):(
+                  <div style={{fontSize:22,opacity:0.15}}>🃏</div>
+                )}
+                <div style={{position:"absolute",bottom:3,left:0,right:0,textAlign:"center",fontSize:8,color:tc,fontWeight:700,textShadow:"0 1px 4px #000"}}>{idx+1}</div>
+              </div>
+              {/* Info */}
+              <div style={{flex:1,minWidth:0,padding:"12px 12px",display:"flex",flexDirection:"column",justifyContent:"center",gap:3}}>
+                <div style={{display:"flex",alignItems:"baseline",gap:5}}>
+                  <p style={{margin:0,fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.name}</p>
+                  <span style={{fontSize:9,color:tc,flexShrink:0}}>#{card.cardNumber}</span>
+                </div>
+                <div style={{display:"flex",gap:5,alignItems:"center"}}>
+                  <span style={{fontSize:9,color:"#555"}}>{card.set}</span>
+                  <span style={{fontSize:9,color:"#2a2a3a"}}>·</span>
+                  <span style={{fontSize:9,color:"#555"}}>{card.condition}</span>
+                </div>
+                <span style={{background:`${tc}11`,border:`1px solid ${tc}22`,borderRadius:4,padding:"1px 6px",fontSize:8,color:tc,alignSelf:"flex-start"}}>{card.rarity}</span>
+              </div>
+              {/* Value */}
+              <div style={{textAlign:"right",flexShrink:0,padding:"12px 14px",display:"flex",flexDirection:"column",justifyContent:"center",gap:3}}>
+                <p style={{margin:0,fontSize:14,fontWeight:700,color:tc}}>{fmtDKK(card.estimatedValue)}</p>
+                <p style={{margin:0,fontSize:9,color:"#333"}}>est. værdi</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <button onClick={onScanNew} style={{
+        width:"100%",padding:14,border:"none",borderRadius:12,
+        background:"linear-gradient(135deg,#F5C518,#FF6B35)",
+        color:"#000",fontSize:12,fontWeight:700,letterSpacing:"0.1em",
+        cursor:"pointer",fontFamily:"'Space Mono',monospace",
+        boxShadow:"0 4px 20px #F5C51844",
+      }}>⚡ Scan nyt kort</button>
+    </div>
+  );
+}
+
+// ─── Main App ─────────────────────────────────────────────────────────────────
+export default function PokemonScanner(){
+  // Auth state (mock)
+  const[user,setUser]=useState(null); // null = guest
+  const[isPro,setIsPro]=useState(false);
+  const[scansUsed,setScansUsed]=useState(0);
+  const[portfolio,setPortfolio]=useState([]);
+  const[showPaywall,setShowPaywall]=useState(false);
+
+  // App flow
+  const[appView,setAppView]=useState("home"); // home | camera | preview | result | portfolio | login
+  const[mode,setMode]=useState("demo");
+
+  // Scan state
+  const[rawImage,setRawImage]=useState(null);
+  const[cleanImage,setCleanImage]=useState(null);
+  const[imageBase64,setImageBase64]=useState(null);
+  const[result,setResult]=useState(null);
+  const[loading,setLoading]=useState(false);
+  const[removingBg,setRemovingBg]=useState(false);
+  const[error,setError]=useState(null);
+  const[animateBars,setAnimateBars]=useState(false);
+
+  const fileRef=useRef();
+
+  // Load portfolio from storage
+  useEffect(()=>{
+    (async()=>{
+      try{
+        const saved=await window.storage.get("portfolio");
+        if(saved) setPortfolio(JSON.parse(saved.value));
+        const sc=await window.storage.get("scansUsed");
+        if(sc) setScansUsed(parseInt(sc.value)||0);
+        const u=await window.storage.get("user");
+        if(u){ const parsed=JSON.parse(u.value); setUser(parsed); setIsPro(parsed.pro||false); }
+      }catch(e){}
+    })();
+  },[]);
+
+  const savePortfolio=(cards)=>{
+    setPortfolio(cards);
+    window.storage.set("portfolio",JSON.stringify(cards)).catch(()=>{});
+  };
+
+  const bumpScans=()=>{
+    const n=scansUsed+1;
+    setScansUsed(n);
+    window.storage.set("scansUsed",String(n)).catch(()=>{});
+  };
+
+  const handleLogin=(name)=>{
+    const u={name,pro:false};
+    setUser(u);
+    window.storage.set("user",JSON.stringify(u)).catch(()=>{});
+    setAppView("home");
+  };
+
+  const handleUpgrade=()=>{
+    const u={...user,pro:true};
+    setUser(u);
+    setIsPro(true);
+    window.storage.set("user",JSON.stringify(u)).catch(()=>{});
+    setShowPaywall(false);
+  };
+
+  const handleLogout=()=>{
+    setUser(null);setIsPro(false);
+    window.storage.delete("user").catch(()=>{});
+    setAppView("home");
+  };
+
+  const canScan=isPro||(scansUsed<FREE_SCANS);
+
+  const handleCapture=useCallback(async(dataUrl)=>{
+    if(!canScan){setShowPaywall(true);return;}
+    setRawImage(dataUrl);setAppView("preview");
+    setRemovingBg(true);setError(null);setResult(null);setAnimateBars(false);
+    const clean=await removeBackground(dataUrl);
+    setCleanImage(clean);setRemovingBg(false);
+    const b64=await toJpegBase64(dataUrl);
+    setImageBase64(b64);
+  },[canScan]);
+
+  const handleFile=useCallback(async(file)=>{
+    if(!file||!file.type.startsWith("image/"))return;
+    const reader=new FileReader();
+    reader.onload=(e)=>handleCapture(e.target.result);
+    reader.readAsDataURL(file);
+  },[handleCapture]);
+
+  const runDemo=async()=>{
+    setLoading(true);setError(null);setResult(null);setAnimateBars(false);
+    await new Promise(r=>setTimeout(r,2200));
+    setResult(MOCK_RESULT);
+    bumpScans();
+    setTimeout(()=>setAnimateBars(true),100);
+    setLoading(false);
+    setAppView("result");
+  };
+
+  const runLive=async()=>{
+    if(!imageBase64)return;
+    setLoading(true);setError(null);setResult(null);setAnimateBars(false);
+    try{
+      const response=await fetch("/api/scan",{
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({imageBase64}),
+      });
+      if(!response.ok){const e=await response.json();throw new Error(e.error||`API fejl ${response.status}`);}
+      const parsed=await response.json();
+      setResult(parsed);
+      bumpScans();
+      setTimeout(()=>setAnimateBars(true),100);
+      setAppView("result");
+    }catch(err){setError(err.message);}
+    finally{setLoading(false);}
+  };
+
+  const saveToPortfolio=()=>{
+    if(!user){setAppView("login");return;}
+    const card={...result,id:`c${Date.now()}`,scannedAt:new Date().toISOString(),image:cleanImage};
+    savePortfolio([...portfolio,card]);
+    setAppView("portfolio");
+  };
+
+  const scanNew=()=>{
+    if(!canScan){setShowPaywall(true);return;}
+    setAppView("camera");setResult(null);setRawImage(null);setCleanImage(null);setError(null);setAnimateBars(false);
+  };
+
+  const tc=result?.type&&typeColors[result.type]?typeColors[result.type]:"#F5C518";
+  const rarityStars={Common:1,Uncommon:2,Rare:3,"Rare Holo":4,"Ultra Rare":5,"Secret Rare":6,"Full Art":5,"Rainbow Rare":6,Promo:3};
+  const prices=result?.prices||{};
+  const maxPrice=Math.max(prices.poor||0,prices.played||0,prices.nearMint||0,prices.mint||0,prices.psa10||0)*1.1||10;
+
+  // ── RENDER ──────────────────────────────────────────────────────────────────
+  return(
+    <div style={{minHeight:"100vh",background:"#0a0a1a",fontFamily:"'Space Mono',monospace",color:"#fff",padding:"0 0 80px",position:"relative"}}>
+      <div style={{position:"fixed",inset:0,background:"radial-gradient(ellipse at 20% 20%,#1a0533 0%,transparent 50%),radial-gradient(ellipse at 80% 80%,#001a3a 0%,transparent 50%)",pointerEvents:"none",zIndex:0}}/>
+      <div style={{position:"fixed",inset:0,backgroundImage:"radial-gradient(circle at 1px 1px,#ffffff05 1px,transparent 0)",backgroundSize:"40px 40px",pointerEvents:"none",zIndex:0}}/>
+
+      {showPaywall&&<PaywallModal onUpgrade={handleUpgrade} onClose={()=>setShowPaywall(false)}/>}
+
+      <div style={{position:"relative",zIndex:1,maxWidth:520,margin:"0 auto",padding:"0 20px"}}>
+
+        {/* ── TOP BAR ── */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"24px 0 16px"}}>
+          <div style={{cursor:"pointer"}} onClick={()=>setAppView("home")}>
+            <span style={{fontSize:18,fontWeight:700,background:"linear-gradient(135deg,#F5C518,#FF6B35)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"0.08em"}}>⚡ PokéScanner</span>
+          </div>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            {user&&<button onClick={()=>setAppView("portfolio")} style={{background:"transparent",border:"1px solid #1e1e3a",borderRadius:8,padding:"6px 12px",color:"#666",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+              📁 {portfolio.length} kort
+            </button>}
+            {user?(
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <span style={{fontSize:10,color:isPro?"#5BAD6F":"#555"}}>{isPro?"PRO · ":""}{user.name}</span>
+                <button onClick={handleLogout} style={{background:"transparent",border:"none",color:"#333",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>ud</button>
+              </div>
+            ):(
+              <button onClick={()=>setAppView("login")} style={{background:"transparent",border:"1px solid #1e1e3a",borderRadius:8,padding:"6px 12px",color:"#555",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>Log ind</button>
+            )}
+          </div>
+        </div>
+
+        {/* ── HOME ── */}
+        {appView==="home"&&(
+          <>
+            <div style={{textAlign:"center",padding:"20px 0 28px"}}>
+              <div style={{fontSize:44,marginBottom:8}}>⚡</div>
+              <h1 style={{fontSize:24,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",margin:"0 0 8px",background:"linear-gradient(135deg,#F5C518,#FF6B35,#C77DFF)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent"}}>PokéScanner</h1>
+              <p style={{color:"#444",fontSize:10,letterSpacing:"0.15em",margin:"0 0 24px",textTransform:"uppercase"}}>TCG Card Appraisal · Powered by AI</p>
+              <ScanCounter used={scansUsed} isPro={isPro}/>
+            </div>
+
+            <div style={{display:"flex",gap:6,marginBottom:16,background:"#0d0d22",borderRadius:10,padding:4,border:"1px solid #1a1a3a"}}>
+              {[["demo","🎭 Demo"],["live","⚡ Live API"]].map(([m,label])=>(
+                <button key={m} onClick={()=>setMode(m)} style={{flex:1,padding:"9px 0",border:"none",borderRadius:7,background:mode===m?m==="demo"?"linear-gradient(135deg,#C77DFF22,#4A90D922)":"linear-gradient(135deg,#F5C51822,#FF6B3522)":"transparent",color:mode===m?"#fff":"#444",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",outline:mode===m?`1px solid ${m==="demo"?"#C77DFF33":"#F5C51833"}`:"none"}}>{label}</button>
+              ))}
+            </div>
+
+            {mode==="demo"&&<div style={{marginBottom:14,padding:"9px 14px",background:"#0d0820",border:"1px solid #C77DFF22",borderRadius:8,fontSize:10,color:"#C77DFF77",lineHeight:1.6}}>
+              Demo viser N's Reshiram som eksempel — ingen API-nøgle krævet.
+            </div>}
+
+            <button onClick={()=>{if(!canScan){setShowPaywall(true);}else{setAppView("camera");}}} style={{
+              width:"100%",padding:18,border:"none",borderRadius:14,
+              background:canScan?"linear-gradient(135deg,#F5C518,#FF6B35)":"#1a1a2e",
+              color:canScan?"#000":"#444",fontSize:13,fontWeight:700,letterSpacing:"0.1em",
+              cursor:"pointer",fontFamily:"'Space Mono',monospace",
+              boxShadow:canScan?"0 4px 24px #F5C51855":"none",marginBottom:10,
+            }}>{canScan?"📸 Scan et kort":"🔒 Opgrader for at fortsætte"}</button>
+
+            {!isPro&&scansUsed>=FREE_SCANS&&(
+              <button onClick={()=>setShowPaywall(true)} style={{width:"100%",padding:14,border:"1px solid #F5C51833",borderRadius:12,background:"transparent",color:"#F5C518",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+                ⚡ Opgrader til Pro — {PRICE_MO} kr./md
+              </button>
+            )}
+
+            {/* Demo portfolio preview */}
+            {portfolio.length===0&&(
+              <div style={{marginTop:24,background:"#0d0d22",border:"1px solid #1a1a3a",borderRadius:14,padding:20,textAlign:"center"}}>
+                <p style={{color:"#2a2a3a",fontSize:11,margin:"0 0 8px"}}>Din portefølje er tom</p>
+                <p style={{color:"#1e1e3a",fontSize:10,margin:0}}>Scan dit første kort for at komme i gang</p>
+              </div>
+            )}
+            {portfolio.length>0&&(
+              <div style={{marginTop:20}}>
+                <p style={{fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase",margin:"0 0 10px"}}>Portefølje preview</p>
+                <div style={{background:"#0d0d22",border:"1px solid #1a1a3a",borderRadius:14,padding:"14px 16px",cursor:"pointer"}} onClick={()=>setAppView("portfolio")}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>
+                      <p style={{margin:"0 0 2px",fontSize:18,fontWeight:700,color:"#F5C518"}}>{fmtDKK(portfolio.reduce((s,c)=>s+(c.estimatedValue||0),0))}</p>
+                      <p style={{margin:0,fontSize:10,color:"#555"}}>{portfolio.length} kort skannet</p>
+                    </div>
+                    <span style={{color:"#333",fontSize:18}}>›</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── LOGIN ── */}
+        {appView==="login"&&(
+          <div style={{paddingTop:40}}>
+            <button onClick={()=>setAppView("home")} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:24}}>← Tilbage</button>
+            <div style={{background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:20,padding:32,textAlign:"center"}}>
+              <div style={{fontSize:32,marginBottom:12}}>👤</div>
+              <h2 style={{margin:"0 0 8px",fontSize:16,fontWeight:700,color:"#fff"}}>Opret profil</h2>
+              <p style={{color:"#555",fontSize:11,margin:"0 0 24px",lineHeight:1.7}}>Gem dine kort og se din portefølje.<br/>Gratis at oprette.</p>
+              {["Mikkel","Sajid","Guest"].map(name=>(
+                <button key={name} onClick={()=>handleLogin(name)} style={{
+                  display:"block",width:"100%",padding:13,marginBottom:8,
+                  background:"#060610",border:"1px solid #1e1e3a",borderRadius:10,
+                  color:"#aaa",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",
+                  textAlign:"left",
+                }}>→ Fortsæt som <strong style={{color:"#fff"}}>{name}</strong></button>
+              ))}
+              <p style={{color:"#2a2a3a",fontSize:9,marginTop:16}}>Demo: vælg et navn for at simulere login</p>
+            </div>
+          </div>
+        )}
+
+        {/* ── CAMERA ── */}
+        {appView==="camera"&&(
+          <>
+            <button onClick={()=>setAppView("home")} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:12}}>← Tilbage</button>
+            <ScanCounter used={scansUsed} isPro={isPro}/>
+            <div style={{marginTop:12}}><CameraViewfinder onCapture={handleCapture}/></div>
+            <div style={{display:"flex",gap:8,marginTop:10}}>
+              <button onClick={()=>fileRef.current?.click()} style={{flex:1,padding:13,background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:10,color:"#666",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>📁 Vælg fil</button>
+              {mode==="demo"&&<Btn onClick={runDemo} disabled={loading} gradient="linear-gradient(135deg,#C77DFF,#4A90D9)" style={{flex:1}}>{loading?"Simulerer...":"🎭 Demo"}</Btn>}
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
+          </>
+        )}
+
+        {/* ── PREVIEW ── */}
+        {appView==="preview"&&(
+          <>
+            <button onClick={()=>setAppView("camera")} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:12}}>← Scan igen</button>
+            <div style={{background:"repeating-conic-gradient(#111128 0% 25%,#0d0d22 0% 50%) 0 0/20px 20px",borderRadius:16,overflow:"hidden",minHeight:200,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid #1e1e3a",position:"relative"}}>
+              {removingBg?(
+                <div style={{padding:40,textAlign:"center"}}>
+                  <div style={{fontSize:24,marginBottom:12,animation:"spin 1s linear infinite",display:"inline-block"}}>⚡</div>
+                  <p style={{color:"#555",fontSize:11,letterSpacing:"0.1em",margin:0,textTransform:"uppercase"}}>Fjerner baggrund...</p>
+                </div>
+              ):(
+                <>
+                  <img src={cleanImage||rawImage} alt="Pokemon kort" style={{maxWidth:"80%",maxHeight:420,objectFit:"contain",display:"block",margin:"20px auto",filter:"drop-shadow(0 8px 24px rgba(0,0,0,0.8))"}}/>
+                  <div style={{position:"absolute",top:10,right:10,background:"#000000aa",borderRadius:6,padding:"3px 8px",fontSize:9,color:"#444"}}>Baggrund fjernet</div>
+                </>
+              )}
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:10}}>
+              {mode==="demo"?(
+                <Btn onClick={runDemo} disabled={loading||removingBg} gradient="linear-gradient(135deg,#C77DFF,#4A90D9)" style={{flex:1}}>{loading?"Simulerer...":"🎭 Vurder (Demo)"}</Btn>
+              ):(
+                <Btn onClick={runLive} disabled={loading||removingBg||!imageBase64} gradient="linear-gradient(135deg,#F5C518,#FF6B35)" style={{flex:1,color:"#000"}}>{loading?"Analyserer...":"⚡ Vurder Kort"}</Btn>
+              )}
+            </div>
+            {error&&<div style={{marginTop:12,padding:12,background:"#1a0000",border:"1px solid #440000",borderRadius:10,color:"#ff6666",fontSize:11}}>⚠️ {error}</div>}
+          </>
+        )}
+
+        {/* ── RESULT ── */}
+        {appView==="result"&&result&&(
+          <>
+            {cleanImage&&(
+              <div style={{background:"repeating-conic-gradient(#111128 0% 25%,#0d0d22 0% 50%) 0 0/20px 20px",borderRadius:16,border:`1px solid ${tc}33`,marginBottom:16,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <img src={cleanImage} alt={result.name} style={{maxWidth:"72%",maxHeight:340,objectFit:"contain",display:"block",margin:"20px auto",filter:`drop-shadow(0 8px 32px rgba(0,0,0,0.9)) drop-shadow(0 0 20px ${tc}44)`}}/>
+              </div>
+            )}
+
+            <div style={{background:"#0d0d22",border:`1px solid ${tc}33`,borderRadius:20,overflow:"hidden",marginBottom:12}}>
+              <div style={{background:`linear-gradient(135deg,${tc}1a,#0d0d22)`,padding:"20px 20px 14px",borderBottom:"1px solid #151528"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
+                  <div style={{flex:1}}>
+                    <h2 style={{margin:0,fontSize:19,fontWeight:700,color:"#fff"}}>{result.name}</h2>
+                    <p style={{margin:"4px 0 0",color:"#555",fontSize:10}}>{[result.set,result.cardNumber&&`#${result.cardNumber}`,result.year].filter(Boolean).join(" · ")}</p>
+                  </div>
+                  <TypeBadge type={result.type}/>
+                </div>
+                <div style={{display:"flex",gap:6,marginTop:12,flexWrap:"wrap"}}>
+                  {[result.rarity,result.condition,result.isHolo&&"Holo",result.isFirstEdition&&"1st Edition"].filter(Boolean).map(t=><Tag key={t}>{t}</Tag>)}
+                </div>
+                <div style={{marginTop:10}}><StarRating count={rarityStars[result.rarity]||2}/></div>
+              </div>
+
+              <div style={{padding:"16px 20px",borderBottom:"1px solid #151528",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <p style={{margin:0,fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase"}}>Estimeret Markedsværdi</p>
+                  <p style={{margin:"4px 0 0",fontSize:28,fontWeight:700,color:tc,textShadow:`0 0 20px ${tc}55`}}>{fmtDKK(result.estimatedValue)}</p>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <p style={{margin:0,fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase"}}>Tillid</p>
+                  <p style={{margin:"4px 0 0",fontSize:12,fontWeight:700,color:result.confidence==="high"?"#5BAD6F":result.confidence==="medium"?"#F5C518":"#FF6B35"}}>{result.confidence==="high"?"HØJ ✓":result.confidence==="medium"?"MIDDEL ~":"LAV ⚠"}</p>
+                </div>
+              </div>
+
+              <div style={{padding:"16px 20px",borderBottom:"1px solid #151528"}}>
+                <p style={{margin:"0 0 12px",fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase"}}>Prisoversigt (DKK)</p>
+                <PriceBar label="Poor"      value={prices.poor}     max={maxPrice} color="#666"    animate={animateBars}/>
+                <PriceBar label="Played"    value={prices.played}   max={maxPrice} color="#FF6B35" animate={animateBars}/>
+                <PriceBar label="Near Mint" value={prices.nearMint} max={maxPrice} color="#F5C518" animate={animateBars}/>
+                <PriceBar label="Mint"      value={prices.mint}     max={maxPrice} color="#5BAD6F" animate={animateBars}/>
+                <PriceBar label="PSA 10"    value={prices.psa10}    max={maxPrice} color="#C77DFF" animate={animateBars}/>
+              </div>
+
+              {result.notes&&<div style={{padding:"12px 20px",borderBottom:"1px solid #151528"}}>
+                <p style={{margin:"0 0 6px",fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase"}}>Ekspert Note</p>
+                <p style={{margin:0,fontSize:11,color:"#777",lineHeight:1.8,fontStyle:"italic"}}>{result.notes}</p>
+              </div>}
+
+              <div style={{padding:"10px 20px",background:"#08081a"}}>
+                <p style={{margin:0,fontSize:9,color:"#2a2a3a"}}>⚠ {mode==="demo"?"Demo-data · DKK (USD×6,88)":"AI-estimater · DKK (USD×6,88) · verificér med TCGPlayer"}</p>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div style={{display:"flex",gap:8,marginBottom:8}}>
+              <button onClick={saveToPortfolio} style={{
+                flex:1,padding:13,border:"none",borderRadius:10,
+                background:"linear-gradient(135deg,#5BAD6F,#3d8b50)",
+                color:"#fff",fontSize:11,fontWeight:700,letterSpacing:"0.08em",
+                cursor:"pointer",fontFamily:"'Space Mono',monospace",
+                boxShadow:"0 4px 20px #5BAD6F44",
+              }}>💾 Gem i portefølje</button>
+              <button onClick={scanNew} style={{padding:"13px 16px",background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:10,color:"#555",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>Scan ny</button>
+            </div>
+          </>
+        )}
+
+        {/* ── PORTFOLIO ── */}
+        {appView==="portfolio"&&(
+          <>
+            <button onClick={()=>setAppView("home")} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:16}}>← Tilbage</button>
+            {portfolio.length>0?(
+              <Portfolio cards={portfolio} onScanNew={scanNew}/>
+            ):(
+              <div style={{textAlign:"center",padding:"60px 20px"}}>
+                <div style={{fontSize:40,marginBottom:12,opacity:0.3}}>📁</div>
+                <p style={{color:"#333",fontSize:12,margin:"0 0 20px"}}>Ingen kort i porteføljen endnu</p>
+                <button onClick={scanNew} style={{padding:"13px 24px",border:"none",borderRadius:10,background:"linear-gradient(135deg,#F5C518,#FF6B35)",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>⚡ Scan første kort</button>
+              </div>
+            )}
+          </>
+        )}
+
+      </div>
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+        *{box-sizing:border-box;}
+        @keyframes blink{0%,100%{opacity:1}50%{opacity:0.2}}
+        @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        @keyframes pulse{0%,100%{box-shadow:0 0 0 2px #F5C51844,0 0 20px #F5C51822}50%{box-shadow:0 0 0 2px #F5C518aa,0 0 30px #F5C51855}}
+        @keyframes scanline{0%{top:8%;opacity:0}10%{opacity:1}90%{opacity:1}100%{top:92%;opacity:0}}
+      `}</style>
+    </div>
+  );
+}
