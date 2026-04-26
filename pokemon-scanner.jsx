@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 
 // ─── Storage (localStorage wrapper) ──────────────────────────────────────────
 const storage = {
@@ -73,6 +73,37 @@ function Btn({onClick,disabled,gradient,children,style={}}){
       boxShadow:(!disabled&&gradient)?`0 4px 20px ${gradient.includes("F5C518")?"#F5C51844":"#C77DFF44"}`:"none",
       ...style,
     }}>{children}</button>
+  );
+}
+
+// ─── Confetti ─────────────────────────────────────────────────────────────────
+const CONFETTI_COLORS=["#F5C518","#FF6B35","#C77DFF","#4A90D9","#5BAD6F","#FF85A1","#fff","#FF3860"];
+function Confetti({big,onDone}){
+  const particles=useMemo(()=>Array.from({length:big?90:55},(_,i)=>({
+    id:i,
+    x:Math.random()*100,
+    delay:Math.random()*0.9,
+    dur:2.4+Math.random()*1.8,
+    size:big?8+Math.random()*10:5+Math.random()*7,
+    color:CONFETTI_COLORS[Math.floor(Math.random()*CONFETTI_COLORS.length)],
+    rot:Math.random()*360,
+    circle:Math.random()>0.4,
+    drift:(Math.random()-0.5)*120,
+  })),[]);
+  useEffect(()=>{const t=setTimeout(onDone,4000);return()=>clearTimeout(t);},[]);
+  return(
+    <div style={{position:"fixed",inset:0,pointerEvents:"none",zIndex:200,overflow:"hidden"}}>
+      {particles.map(p=>(
+        <div key={p.id} style={{
+          position:"absolute",left:`${p.x}%`,top:-16,
+          width:p.size,height:p.circle?p.size:p.size*0.5,
+          background:p.color,borderRadius:p.circle?"50%":"2px",
+          animation:`confettiFall ${p.dur}s ${p.delay}s cubic-bezier(0.25,0.46,0.45,0.94) forwards`,
+          "--drift":`${p.drift}px`,
+          boxShadow:p.color==="#F5C518"?`0 0 6px ${p.color}`:"none",
+        }}/>
+      ))}
+    </div>
   );
 }
 
@@ -305,6 +336,8 @@ export default function PokemonScanner(){
   const[loading,setLoading]=useState(false);
   const[error,setError]=useState(null);
   const[animateBars,setAnimateBars]=useState(false);
+  const[showConfetti,setShowConfetti]=useState(false);
+  const[isRecord,setIsRecord]=useState(false);
 
   const fileRef=useRef();
 
@@ -343,6 +376,12 @@ export default function PokemonScanner(){
       setResult(parsed);
       setTimeout(()=>setAnimateBars(true),100);
       setAppView("result");
+      // Konfetti + rekord check
+      const val=parsed.estimatedValue||0;
+      const maxInPortfolio=portfolio.reduce((m,c)=>Math.max(m,c.estimatedValue||0),0);
+      const rec=portfolio.length>0&&val>maxInPortfolio;
+      setIsRecord(rec);
+      if(val*USD_TO_DKK>=50){setShowConfetti(true);}
     }catch(err){setError(err.message);}
     finally{setLoading(false);}
   };
@@ -356,7 +395,7 @@ export default function PokemonScanner(){
   };
 
   const scanNew=()=>{
-    setAppView("camera");setResult(null);setRawImage(null);setError(null);setAnimateBars(false);
+    setAppView("camera");setResult(null);setRawImage(null);setError(null);setAnimateBars(false);setShowConfetti(false);setIsRecord(false);
   };
 
   const tc=result?.type&&typeColors[result.type]?typeColors[result.type]:"#F5C518";
@@ -452,6 +491,16 @@ export default function PokemonScanner(){
         {/* ── RESULT ── */}
         {appView==="result"&&result&&(
           <>
+            {showConfetti&&<Confetti big={(result.estimatedValue||0)*USD_TO_DKK>=200} onDone={()=>setShowConfetti(false)}/>}
+            {isRecord&&(
+              <div style={{marginBottom:12,padding:"10px 16px",background:"linear-gradient(135deg,#F5C51822,#FF6B3522)",border:"1px solid #F5C51866",borderRadius:12,display:"flex",alignItems:"center",gap:10,animation:"recordPop 0.5s cubic-bezier(0.175,0.885,0.32,1.275)"}}>
+                <span style={{fontSize:22}}>🏆</span>
+                <div>
+                  <p style={{margin:0,fontSize:12,fontWeight:700,color:"#F5C518",letterSpacing:"0.05em"}}>NY REKORD!</p>
+                  <p style={{margin:0,fontSize:10,color:"#888"}}>Dit dyreste kort nogensinde</p>
+                </div>
+              </div>
+            )}
             {rawImage&&(
               <div style={{background:"repeating-conic-gradient(#111128 0% 25%,#0d0d22 0% 50%) 0 0/20px 20px",borderRadius:16,border:`1px solid ${tc}33`,marginBottom:16,display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <img src={rawImage} alt={result.name} style={{maxWidth:"72%",maxHeight:340,objectFit:"contain",display:"block",margin:"20px auto",filter:`drop-shadow(0 8px 32px rgba(0,0,0,0.9)) drop-shadow(0 0 20px ${tc}44)`}}/>
@@ -541,6 +590,8 @@ export default function PokemonScanner(){
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes pulse{0%,100%{box-shadow:0 0 0 2px #F5C51844,0 0 20px #F5C51822}50%{box-shadow:0 0 0 2px #F5C518aa,0 0 30px #F5C51855}}
         @keyframes scanline{0%{top:8%;opacity:0}10%{opacity:1}90%{opacity:1}100%{top:92%;opacity:0}}
+        @keyframes confettiFall{0%{transform:translateY(0) rotate(0deg) translateX(0);opacity:1}100%{transform:translateY(105vh) rotate(720deg) translateX(var(--drift,0px));opacity:0}}
+        @keyframes recordPop{0%{transform:scale(0.6);opacity:0}100%{transform:scale(1);opacity:1}}
         @keyframes scanCard{0%{top:-3px}100%{top:100%}}
         @keyframes flicker{0%,100%{opacity:1}50%{opacity:0.85}}
         @keyframes focusRing{0%{opacity:1;transform:translate(-50%,-50%) scale(1)}60%{opacity:1;transform:translate(-50%,-50%) scale(0.75)}100%{opacity:0;transform:translate(-50%,-50%) scale(0.7)}}
