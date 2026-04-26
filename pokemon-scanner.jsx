@@ -446,10 +446,81 @@ function Portfolio({cards,onScanNew,onDelete}){
   );
 }
 
+// ─── TCG card image fetcher ───────────────────────────────────────────────────
+function useTcgImage(name,set,skip){
+  const[src,setSrc]=useState(null);
+  useEffect(()=>{
+    if(skip||!name) return;
+    let cancelled=false;
+    const q=set?`name:"${name}" set.name:"${set}"`:`name:"${name}"`;
+    fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q)}&pageSize=1&select=images`)
+      .then(r=>r.json())
+      .then(d=>{if(!cancelled)setSrc(d?.data?.[0]?.images?.small||null);})
+      .catch(()=>{});
+    return()=>{cancelled=true;};
+  },[name,set,skip]);
+  return src;
+}
+
+// ─── Wantlist card row ────────────────────────────────────────────────────────
+function WantlistCard({item,onRemove,onClick}){
+  const tcgImg=useTcgImage(item.name,item.set,!!item.image);
+  const imgSrc=item.image||tcgImg;
+  return(
+    <div onClick={onClick} style={{background:"#0d0d22",border:"1px solid #C77DFF22",borderRadius:12,display:"flex",alignItems:"center",gap:12,cursor:"pointer",overflow:"hidden",transition:"border-color 0.2s"}}
+      onMouseEnter={e=>e.currentTarget.style.borderColor="#C77DFF55"}
+      onMouseLeave={e=>e.currentTarget.style.borderColor="#C77DFF22"}>
+      {/* Thumbnail */}
+      <div style={{width:60,height:84,flexShrink:0,background:"#111128",display:"flex",alignItems:"center",justifyContent:"center",borderRight:"1px solid #1e1e2a"}}>
+        {imgSrc
+          ?<img src={imgSrc} alt={item.name} style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+          :<span style={{fontSize:22,opacity:0.2}}>⭐</span>
+        }
+      </div>
+      <div style={{flex:1,minWidth:0,padding:"10px 0"}}>
+        <p style={{margin:0,fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}</p>
+        {item.set&&<p style={{margin:"2px 0 0",fontSize:9,color:"#555"}}>{item.set}</p>}
+        {item.estimatedValue&&<p style={{margin:"3px 0 0",fontSize:10,color:"#C77DFF",fontWeight:700}}>{fmtDKK(item.estimatedValue)}</p>}
+      </div>
+      <button onClick={e=>{e.stopPropagation();onRemove(item.id);}} style={{background:"transparent",border:"none",color:"#2a2a3a",fontSize:16,cursor:"pointer",padding:"0 14px 0 0",flexShrink:0}} title="Fjern">✕</button>
+    </div>
+  );
+}
+
+// ─── Wantlist modal ───────────────────────────────────────────────────────────
+function WantlistModal({item,onClose,onRemove}){
+  const tcgImg=useTcgImage(item.name,item.set,!!item.image);
+  const imgSrc=item.image||tcgImg;
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000000cc",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d22",border:"1px solid #C77DFF44",borderRadius:20,padding:24,width:"100%",maxWidth:340,fontFamily:"'Space Mono',monospace"}}>
+        {/* Card image */}
+        <div style={{display:"flex",justifyContent:"center",marginBottom:20}}>
+          {imgSrc
+            ?<img src={imgSrc} alt={item.name} style={{maxHeight:260,maxWidth:"100%",objectFit:"contain",borderRadius:10,boxShadow:"0 8px 32px #00000088,0 0 30px #C77DFF33"}}/>
+            :<div style={{width:180,height:252,background:"#111128",borderRadius:12,border:"1px solid #1e1e3a",display:"flex",alignItems:"center",justifyContent:"center",fontSize:48,opacity:0.2}}>⭐</div>
+          }
+        </div>
+        {/* Details */}
+        <h3 style={{margin:"0 0 6px",fontSize:18,fontWeight:700,color:"#fff"}}>{item.name}</h3>
+        {item.set&&<p style={{margin:"0 0 4px",fontSize:10,color:"#555"}}>{item.set}</p>}
+        {item.estimatedValue&&(
+          <p style={{margin:"0 0 16px",fontSize:16,fontWeight:700,color:"#C77DFF"}}>{fmtDKK(item.estimatedValue)} <span style={{fontSize:9,color:"#444",fontWeight:400}}>est. værdi</span></p>
+        )}
+        <div style={{display:"flex",gap:8,marginTop:16}}>
+          <button onClick={onClose} style={{flex:1,padding:"11px",background:"#111128",border:"1px solid #1e1e3a",borderRadius:10,color:"#888",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>Luk</button>
+          <button onClick={()=>{onRemove(item.id);onClose();}} style={{flex:1,padding:"11px",background:"#2a0808",border:"1px solid #440000",borderRadius:10,color:"#ff6666",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>🗑 Fjern</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Wantlist View ───────────────────────────────────────────────────────────
 function WantlistView({wantlist,onAdd,onRemove,onBack,onShare,copyDone}){
   const[name,setName]=useState("");
   const[set,setSet]=useState("");
+  const[modal,setModal]=useState(null);
 
   const submit=(e)=>{
     e.preventDefault();
@@ -461,6 +532,8 @@ function WantlistView({wantlist,onAdd,onRemove,onBack,onShare,copyDone}){
 
   return(
     <div>
+      {modal&&<WantlistModal item={modal} onClose={()=>setModal(null)} onRemove={onRemove}/>}
+
       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
         <button onClick={onBack} style={{background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:8,color:"#aaa",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",padding:"7px 14px"}}>← Tilbage</button>
         {wantlist.length>0&&(
@@ -478,19 +551,12 @@ function WantlistView({wantlist,onAdd,onRemove,onBack,onShare,copyDone}){
         <p style={{margin:0,fontSize:28,fontWeight:700,color:"#fff"}}>{wantlist.length} <span style={{fontSize:13,color:"#444",fontWeight:400}}>kort på listen</span></p>
       </div>
 
-      {/* Add form */}
       <form onSubmit={submit} style={{marginBottom:16,background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:14,padding:16}}>
         <p style={{margin:"0 0 10px",fontSize:9,color:"#555",letterSpacing:"0.15em",textTransform:"uppercase"}}>Tilføj kort til ønskeliste</p>
-        <input
-          value={name} onChange={e=>setName(e.target.value)}
-          placeholder="Pokémon navn (fx Charizard)"
-          style={{width:"100%",padding:"10px 12px",background:"#111128",border:"1px solid #1e1e3a",borderRadius:8,color:"#fff",fontSize:11,fontFamily:"'Space Mono',monospace",marginBottom:8,boxSizing:"border-box",outline:"none"}}
-        />
-        <input
-          value={set} onChange={e=>setSet(e.target.value)}
-          placeholder="Sæt (fx Surging Sparks) — valgfrit"
-          style={{width:"100%",padding:"10px 12px",background:"#111128",border:"1px solid #1e1e3a",borderRadius:8,color:"#fff",fontSize:11,fontFamily:"'Space Mono',monospace",marginBottom:10,boxSizing:"border-box",outline:"none"}}
-        />
+        <input value={name} onChange={e=>setName(e.target.value)} placeholder="Pokémon navn (fx Charizard)"
+          style={{width:"100%",padding:"10px 12px",background:"#111128",border:"1px solid #1e1e3a",borderRadius:8,color:"#fff",fontSize:11,fontFamily:"'Space Mono',monospace",marginBottom:8,boxSizing:"border-box",outline:"none"}}/>
+        <input value={set} onChange={e=>setSet(e.target.value)} placeholder="Sæt (fx Surging Sparks) — valgfrit"
+          style={{width:"100%",padding:"10px 12px",background:"#111128",border:"1px solid #1e1e3a",borderRadius:8,color:"#fff",fontSize:11,fontFamily:"'Space Mono',monospace",marginBottom:10,boxSizing:"border-box",outline:"none"}}/>
         <button type="submit" disabled={!name.trim()} style={{
           width:"100%",padding:"11px",border:"none",borderRadius:8,
           background:name.trim()?"linear-gradient(135deg,#C77DFF,#4A90D9)":"#1a1a2e",
@@ -499,7 +565,6 @@ function WantlistView({wantlist,onAdd,onRemove,onBack,onShare,copyDone}){
         }}>⭐ Tilføj til ønskeliste</button>
       </form>
 
-      {/* List */}
       {wantlist.length===0?(
         <div style={{textAlign:"center",padding:"40px 20px",color:"#2a2a3a",fontSize:11}}>
           <div style={{fontSize:32,marginBottom:10,opacity:0.3}}>⭐</div>
@@ -509,15 +574,7 @@ function WantlistView({wantlist,onAdd,onRemove,onBack,onShare,copyDone}){
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {wantlist.map(item=>(
-            <div key={item.id} style={{background:"#0d0d22",border:"1px solid #C77DFF22",borderRadius:12,display:"flex",alignItems:"center",padding:"12px 14px",gap:12}}>
-              <span style={{fontSize:18,flexShrink:0}}>⭐</span>
-              <div style={{flex:1,minWidth:0}}>
-                <p style={{margin:0,fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}</p>
-                {item.set&&<p style={{margin:"2px 0 0",fontSize:9,color:"#555"}}>{item.set}</p>}
-                {item.estimatedValue&&<p style={{margin:"2px 0 0",fontSize:9,color:"#C77DFF"}}>{fmtDKK(item.estimatedValue)} est.</p>}
-              </div>
-              <button onClick={()=>onRemove(item.id)} style={{background:"transparent",border:"none",color:"#2a2a3a",fontSize:16,cursor:"pointer",padding:0,flexShrink:0}} title="Fjern">✕</button>
-            </div>
+            <WantlistCard key={item.id} item={item} onRemove={onRemove} onClick={()=>setModal(item)}/>
           ))}
         </div>
       )}
@@ -688,9 +745,9 @@ export default function PokemonScanner(){
 
   const addResultToWantlist=useCallback(()=>{
     if(!result) return;
-    const item={id:Date.now().toString(),name:result.name,set:result.set,estimatedValue:result.estimatedValue,addedAt:new Date().toISOString()};
+    const item={id:Date.now().toString(),name:result.name,set:result.set,estimatedValue:result.estimatedValue,image:rawImage||null,addedAt:new Date().toISOString()};
     addToWantlist(item);
-  },[result,addToWantlist]);
+  },[result,rawImage,addToWantlist]);
 
   const handleCapture=useCallback(async(dataUrl)=>{
     setRawImage(dataUrl);setAppView("preview");
