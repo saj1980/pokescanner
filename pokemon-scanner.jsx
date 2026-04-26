@@ -447,8 +447,29 @@ function CameraViewfinder({onCapture}){
   );
 }
 
+// ─── Sparkline ───────────────────────────────────────────────────────────────
+function Sparkline({points,color="#F5C518",width=70,height=22}){
+  if(!points||points.length<2) return null;
+  const prices=points.map(p=>p.price);
+  const min=Math.min(...prices);
+  const max=Math.max(...prices);
+  const range=max-min||1;
+  const coords=prices.map((p,i)=>{
+    const x=(i/(prices.length-1))*width;
+    const y=height-((p-min)/range)*(height-4)+2;
+    return[x,y];
+  });
+  const d="M"+coords.map(([x,y])=>`${x.toFixed(1)},${y.toFixed(1)}`).join("L");
+  return(
+    <svg width={width} height={height} style={{overflow:"visible",flexShrink:0}}>
+      <path d={d} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" opacity="0.7"/>
+      {coords.map(([x,y],i)=><circle key={i} cx={x} cy={y} r={i===coords.length-1?2.5:1.5} fill={color} opacity={i===coords.length-1?1:0.5}/>)}
+    </svg>
+  );
+}
+
 // ─── Portfolio view ───────────────────────────────────────────────────────────
-function Portfolio({cards,onScanNew,onDelete}){
+function Portfolio({cards,onScanNew,onDelete,priceHistory={},onUpdatePrice}){
   const total=cards.reduce((s,c)=>s+(c.estimatedValue||0),0);
   const sorted=[...cards].sort((a,b)=>b.estimatedValue-a.estimatedValue);
   return(
@@ -486,11 +507,24 @@ function Portfolio({cards,onScanNew,onDelete}){
                   <span style={{fontSize:9,color:"#2a2a3a"}}>·</span>
                   <span style={{fontSize:9,color:"#555"}}>{card.condition}</span>
                 </div>
-                <span style={{background:`${tc}11`,border:`1px solid ${tc}22`,borderRadius:4,padding:"1px 6px",fontSize:8,color:tc,alignSelf:"flex-start"}}>{card.rarity}</span>
+                {(()=>{
+                  const hist=priceHistory[card.id]||[];
+                  if(hist.length<2) return <span style={{background:`${tc}11`,border:`1px solid ${tc}22`,borderRadius:4,padding:"1px 6px",fontSize:8,color:tc,alignSelf:"flex-start"}}>{card.rarity}</span>;
+                  const first=hist[0].price;
+                  const last=hist[hist.length-1].price;
+                  const diffDKK=Math.round((last-first)*USD_TO_DKK);
+                  const up=diffDKK>=0;
+                  return(
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
+                      <Sparkline points={hist} color={up?"#5BAD6F":"#FF6B35"}/>
+                      <span style={{fontSize:9,fontWeight:700,color:up?"#5BAD6F":"#FF6B35"}}>{up?"+":""}{diffDKK} kr.</span>
+                    </div>
+                  );
+                })()}
               </div>
               <div style={{textAlign:"right",flexShrink:0,padding:"12px 14px",display:"flex",flexDirection:"column",justifyContent:"center",gap:6}}>
                 <p style={{margin:0,fontSize:14,fontWeight:700,color:tc}}>{fmtDKK(card.estimatedValue)}</p>
-                <p style={{margin:0,fontSize:9,color:"#333"}}>est. værdi</p>
+                <button onClick={()=>onUpdatePrice(card)} style={{background:"transparent",border:"1px solid #1e1e3a",borderRadius:6,color:"#555",fontSize:8,cursor:"pointer",padding:"3px 6px",fontFamily:"'Space Mono',monospace",letterSpacing:"0.05em"}}>↻ Opdater</button>
                 <button onClick={()=>onDelete(card.id)} style={{background:"transparent",border:"none",color:"#2a2a3a",fontSize:14,cursor:"pointer",padding:0,lineHeight:1}} title="Slet">🗑</button>
               </div>
             </div>
@@ -732,6 +766,7 @@ function SharedCollection({cards,onScanOwn}){
 export default function PokemonScanner(){
   const[portfolio,setPortfolio]=useState([]);
   const[wantlist,setWantlist]=useState([]);
+  const[priceHistory,setPriceHistory]=useState({});
   const[appView,setAppView]=useState("home");
   const[sharedCards,setSharedCards]=useState(null);
   const[sharedWantlist,setSharedWantlist]=useState(null);
@@ -771,6 +806,8 @@ export default function PokemonScanner(){
     if(saved){try{setPortfolio(JSON.parse(saved.value));}catch{}}
     const savedWant=storage.get("wantlist");
     if(savedWant){try{setWantlist(JSON.parse(savedWant.value));}catch{}}
+    const savedHist=storage.get("priceHistory");
+    if(savedHist){try{setPriceHistory(JSON.parse(savedHist.value));}catch{}}
   },[]);
 
   const sharePortfolio=useCallback(()=>{
@@ -805,6 +842,31 @@ export default function PokemonScanner(){
       return updated;
     });
   },[]);
+
+  const recordPricePoint=useCallback((cardId,priceUsd)=>{
+    const date=new Date().toISOString().split("T")[0];
+    setPriceHistory(prev=>{
+      const hist=prev[cardId]||[];
+      const updated={...prev,[cardId]:[...hist,{date,price:priceUsd}]};
+      storage.set("priceHistory",JSON.stringify(updated));
+      return updated;
+    });
+  },[]);
+
+  const updateCardPrice=useCallback(async(card)=>{
+    if(!card.name) return;
+    try{
+      const q=`name:"${card.name}"${card.set?` set.name:"${card.set}"`:""}`;
+      const res=await fetch(`https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q)}&pageSize=1&select=tcgplayer,cardmarket`);
+      const data=await res.json();
+      const tc=data?.data?.[0];
+      const usd=tc?.tcgplayer?.prices?.holofoil?.market
+        ||tc?.tcgplayer?.prices?.normal?.market
+        ||tc?.tcgplayer?.prices?.["1stEditionHolofoil"]?.market
+        ||(tc?.cardmarket?.prices?.averageSellPrice?tc.cardmarket.prices.averageSellPrice/1.08:null);
+      if(usd) recordPricePoint(card.id,usd);
+    }catch{}
+  },[recordPricePoint]);
 
   const addResultToWantlist=useCallback(()=>{
     if(!result) return;
@@ -863,6 +925,7 @@ export default function PokemonScanner(){
     const updated=[card,...portfolio];
     setPortfolio(updated);
     storage.set("portfolio",JSON.stringify(updated));
+    if(result.estimatedValue) recordPricePoint(card.id,result.estimatedValue);
     setAppView("portfolio");
   };
 
@@ -1126,7 +1189,7 @@ export default function PokemonScanner(){
               )}
             </div>
             {portfolio.length>0?(
-              <Portfolio cards={portfolio} onScanNew={scanNew} onDelete={deleteFromPortfolio}/>
+              <Portfolio cards={portfolio} onScanNew={scanNew} onDelete={deleteFromPortfolio} priceHistory={priceHistory} onUpdatePrice={updateCardPrice}/>
             ):(
               <div style={{textAlign:"center",padding:"60px 20px"}}>
                 <div style={{fontSize:40,marginBottom:12,opacity:0.3}}>📁</div>
