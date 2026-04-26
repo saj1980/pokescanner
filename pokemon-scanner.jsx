@@ -20,43 +20,6 @@ const typeColors = {
 };
 
 
-// ─── Background removal ───────────────────────────────────────────────────────
-async function removeBackground(dataUrl) {
-  return new Promise((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const W=img.width,H=img.height;
-      const canvas=document.createElement("canvas");
-      canvas.width=W; canvas.height=H;
-      const ctx=canvas.getContext("2d");
-      ctx.drawImage(img,0,0);
-      const imageData=ctx.getImageData(0,0,W,H);
-      const data=imageData.data;
-      const corners=[[0,0],[W-1,0],[0,H-1],[W-1,H-1],[Math.floor(W*.05),Math.floor(H*.05)],[Math.floor(W*.95),Math.floor(H*.05)],[Math.floor(W*.05),Math.floor(H*.95)],[Math.floor(W*.95),Math.floor(H*.95)]];
-      let rS=0,gS=0,bS=0;
-      corners.forEach(([x,y])=>{const i=(y*W+x)*4;rS+=data[i];gS+=data[i+1];bS+=data[i+2];});
-      const bgR=rS/corners.length,bgG=gS/corners.length,bgB=bS/corners.length;
-      const visited=new Uint8Array(W*H);
-      const queue=[];
-      const isBg=(idx)=>{const r=data[idx],g=data[idx+1],b=data[idx+2];return Math.abs(r-bgR)+Math.abs(g-bgG)+Math.abs(b-bgB)<165;};
-      for(let x=0;x<W;x++){queue.push([x,0]);queue.push([x,H-1]);}
-      for(let y=1;y<H-1;y++){queue.push([0,y]);queue.push([W-1,y]);}
-      while(queue.length){
-        const[x,y]=queue.pop();
-        if(x<0||x>=W||y<0||y>=H)continue;
-        const pos=y*W+x;
-        if(visited[pos])continue;
-        visited[pos]=1;
-        const idx=pos*4;
-        if(isBg(idx)){data[idx+3]=0;queue.push([x+1,y],[x-1,y],[x,y+1],[x,y-1]);}
-      }
-      ctx.putImageData(imageData,0,0);
-      resolve(canvas.toDataURL("image/png"));
-    };
-    img.src=dataUrl;
-  });
-}
-
 async function toJpegBase64(dataUrl) {
   return new Promise((resolve)=>{
     const img=new Image();
@@ -110,6 +73,75 @@ function Btn({onClick,disabled,gradient,children,style={}}){
       boxShadow:(!disabled&&gradient)?`0 4px 20px ${gradient.includes("F5C518")?"#F5C51844":"#C77DFF44"}`:"none",
       ...style,
     }}>{children}</button>
+  );
+}
+
+// ─── Scanning overlay ─────────────────────────────────────────────────────────
+function ScanningOverlay({image}){
+  const[step,setStep]=useState(0);
+  const[tick,setTick]=useState(0);
+  const steps=[
+    {icon:"🔍",label:"Genkender Pokémon-kort"},
+    {icon:"📡",label:"Søger TCG-database"},
+    {icon:"💰",label:"Beregner markedsværdi"},
+    {icon:"🏆",label:"Tjekker PSA-graderinger"},
+    {icon:"✨",label:"Færdiggør analyse"},
+  ];
+  // Random-looking price ticker
+  const seeds=[142,387,256,489,73,318,95,441,207,364];
+  const fakePrice=seeds[tick%seeds.length]+Math.floor(tick*1.7)%200;
+
+  useEffect(()=>{
+    const si=setInterval(()=>setStep(s=>Math.min(s+1,steps.length-1)),780);
+    const ti=setInterval(()=>setTick(t=>t+1),110);
+    return()=>{clearInterval(si);clearInterval(ti);};
+  },[]);
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:50,background:"#08081a",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"24px 28px",fontFamily:"'Space Mono',monospace"}}>
+      {/* bg glow */}
+      <div style={{position:"fixed",inset:0,background:"radial-gradient(ellipse at 50% 35%,#2a0a5a 0%,transparent 65%)",pointerEvents:"none"}}/>
+      <div style={{position:"fixed",inset:0,backgroundImage:"radial-gradient(circle at 1px 1px,#ffffff04 1px,transparent 0)",backgroundSize:"40px 40px",pointerEvents:"none"}}/>
+
+      {/* Title */}
+      <p style={{position:"relative",margin:"0 0 20px",fontSize:10,letterSpacing:"0.25em",color:"#C77DFF",textTransform:"uppercase",animation:"pulse 1.5s ease-in-out infinite"}}>⚡ Analyserer kort</p>
+
+      {/* Card with scan line */}
+      <div style={{position:"relative",width:148,height:207,marginBottom:24,borderRadius:10,overflow:"hidden",boxShadow:"0 0 0 2px #C77DFF44,0 0 40px #C77DFF33,0 0 80px #C77DFF11",flexShrink:0}}>
+        {image&&<img src={image} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>}
+        {/* Scan line */}
+        <div style={{position:"absolute",left:0,right:0,height:3,background:"linear-gradient(90deg,transparent,#C77DFFcc,#fff,#C77DFFcc,transparent)",boxShadow:"0 0 12px #C77DFF,0 0 24px #C77DFF88",animation:"scanCard 1.6s ease-in-out infinite",pointerEvents:"none"}}/>
+        {/* Overlay tint */}
+        <div style={{position:"absolute",inset:0,background:"linear-gradient(135deg,#C77DFF08,#4A90D908)",pointerEvents:"none"}}/>
+      </div>
+
+      {/* Price ticker */}
+      <div style={{marginBottom:28,textAlign:"center"}}>
+        <p style={{margin:"0 0 2px",fontSize:9,color:"#444",letterSpacing:"0.2em",textTransform:"uppercase"}}>Estimeret værdi</p>
+        <p style={{margin:0,fontSize:38,fontWeight:700,color:"#F5C518",textShadow:"0 0 30px #F5C51888,0 0 60px #F5C51844",letterSpacing:"-0.02em",fontVariantNumeric:"tabular-nums",animation:"flicker 0.11s step-end infinite"}}>
+          {step<steps.length-1?`${fakePrice} kr.`:"— kr."}
+        </p>
+      </div>
+
+      {/* Steps */}
+      <div style={{width:"100%",maxWidth:260,position:"relative"}}>
+        {steps.map((s,i)=>{
+          const done=i<step;
+          const active=i===step;
+          return(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,opacity:done||active?1:0.18,transition:"opacity 0.5s"}}>
+              <span style={{fontSize:13,width:20,textAlign:"center",flexShrink:0,filter:active?"drop-shadow(0 0 6px #C77DFF)":"none"}}>
+                {done?"✓":active?"⚡":s.icon}
+              </span>
+              <span style={{fontSize:10,color:done?"#5BAD6F":active?"#fff":"#333",flex:1,transition:"color 0.4s",letterSpacing:"0.04em"}}>
+                {s.label}{active&&<span style={{animation:"blink 0.8s step-end infinite"}}>_</span>}
+              </span>
+              {done&&<span style={{fontSize:9,color:"#5BAD6F44"}}>✓</span>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -268,11 +300,9 @@ export default function PokemonScanner(){
   const[appView,setAppView]=useState("home");
 
   const[rawImage,setRawImage]=useState(null);
-  const[cleanImage,setCleanImage]=useState(null);
   const[imageBase64,setImageBase64]=useState(null);
   const[result,setResult]=useState(null);
   const[loading,setLoading]=useState(false);
-  const[removingBg,setRemovingBg]=useState(false);
   const[error,setError]=useState(null);
   const[animateBars,setAnimateBars]=useState(false);
 
@@ -285,9 +315,7 @@ export default function PokemonScanner(){
 
   const handleCapture=useCallback(async(dataUrl)=>{
     setRawImage(dataUrl);setAppView("preview");
-    setRemovingBg(true);setError(null);setResult(null);setAnimateBars(false);
-    const clean=await removeBackground(dataUrl);
-    setCleanImage(clean);setRemovingBg(false);
+    setError(null);setResult(null);setAnimateBars(false);
     const b64=await toJpegBase64(dataUrl);
     setImageBase64(b64);
   },[]);
@@ -320,7 +348,7 @@ export default function PokemonScanner(){
   };
 
   const saveToPortfolio=()=>{
-    const card={...result,id:Date.now().toString(),scannedAt:new Date().toISOString(),image:cleanImage};
+    const card={...result,id:Date.now().toString(),scannedAt:new Date().toISOString(),image:rawImage};
     const updated=[card,...portfolio];
     setPortfolio(updated);
     storage.set("portfolio",JSON.stringify(updated));
@@ -328,7 +356,7 @@ export default function PokemonScanner(){
   };
 
   const scanNew=()=>{
-    setAppView("camera");setResult(null);setRawImage(null);setCleanImage(null);setError(null);setAnimateBars(false);
+    setAppView("camera");setResult(null);setRawImage(null);setError(null);setAnimateBars(false);
   };
 
   const tc=result?.type&&typeColors[result.type]?typeColors[result.type]:"#F5C518";
@@ -409,22 +437,13 @@ export default function PokemonScanner(){
         {/* ── PREVIEW ── */}
         {appView==="preview"&&(
           <>
+            {loading&&<ScanningOverlay image={rawImage}/>}
             <button onClick={()=>setAppView("camera")} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:12}}>← Scan igen</button>
-            <div style={{background:"repeating-conic-gradient(#111128 0% 25%,#0d0d22 0% 50%) 0 0/20px 20px",borderRadius:16,overflow:"hidden",minHeight:200,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid #1e1e3a",position:"relative"}}>
-              {removingBg?(
-                <div style={{padding:40,textAlign:"center"}}>
-                  <div style={{fontSize:24,marginBottom:12,animation:"spin 1s linear infinite",display:"inline-block"}}>⚡</div>
-                  <p style={{color:"#555",fontSize:11,letterSpacing:"0.1em",margin:0,textTransform:"uppercase"}}>Fjerner baggrund...</p>
-                </div>
-              ):(
-                <>
-                  <img src={cleanImage||rawImage} alt="Pokemon kort" style={{maxWidth:"80%",maxHeight:420,objectFit:"contain",display:"block",margin:"20px auto",filter:"drop-shadow(0 8px 24px rgba(0,0,0,0.8))"}}/>
-                  <div style={{position:"absolute",top:10,right:10,background:"#000000aa",borderRadius:6,padding:"3px 8px",fontSize:9,color:"#444"}}>Baggrund fjernet</div>
-                </>
-              )}
+            <div style={{background:"repeating-conic-gradient(#111128 0% 25%,#0d0d22 0% 50%) 0 0/20px 20px",borderRadius:16,overflow:"hidden",minHeight:200,display:"flex",alignItems:"center",justifyContent:"center",border:"1px solid #1e1e3a"}}>
+              <img src={rawImage} alt="Pokemon kort" style={{maxWidth:"80%",maxHeight:420,objectFit:"contain",display:"block",margin:"20px auto",filter:"drop-shadow(0 8px 24px rgba(0,0,0,0.8))"}}/>
             </div>
             <div style={{display:"flex",gap:8,marginTop:10}}>
-              <Btn onClick={runLive} disabled={loading||removingBg||!imageBase64} gradient="linear-gradient(135deg,#F5C518,#FF6B35)" style={{flex:1,color:"#000"}}>{loading?"Analyserer...":"⚡ Vurder Kort"}</Btn>
+              <Btn onClick={runLive} disabled={loading||!imageBase64} gradient="linear-gradient(135deg,#F5C518,#FF6B35)" style={{flex:1,color:"#000"}}>⚡ Vurder Kort</Btn>
             </div>
             {error&&<div style={{marginTop:12,padding:12,background:"#1a0000",border:"1px solid #440000",borderRadius:10,color:"#ff6666",fontSize:11}}>⚠️ {error}</div>}
           </>
@@ -433,9 +452,9 @@ export default function PokemonScanner(){
         {/* ── RESULT ── */}
         {appView==="result"&&result&&(
           <>
-            {cleanImage&&(
+            {rawImage&&(
               <div style={{background:"repeating-conic-gradient(#111128 0% 25%,#0d0d22 0% 50%) 0 0/20px 20px",borderRadius:16,border:`1px solid ${tc}33`,marginBottom:16,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <img src={cleanImage} alt={result.name} style={{maxWidth:"72%",maxHeight:340,objectFit:"contain",display:"block",margin:"20px auto",filter:`drop-shadow(0 8px 32px rgba(0,0,0,0.9)) drop-shadow(0 0 20px ${tc}44)`}}/>
+                <img src={rawImage} alt={result.name} style={{maxWidth:"72%",maxHeight:340,objectFit:"contain",display:"block",margin:"20px auto",filter:`drop-shadow(0 8px 32px rgba(0,0,0,0.9)) drop-shadow(0 0 20px ${tc}44)`}}/>
               </div>
             )}
 
@@ -522,6 +541,8 @@ export default function PokemonScanner(){
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes pulse{0%,100%{box-shadow:0 0 0 2px #F5C51844,0 0 20px #F5C51822}50%{box-shadow:0 0 0 2px #F5C518aa,0 0 30px #F5C51855}}
         @keyframes scanline{0%{top:8%;opacity:0}10%{opacity:1}90%{opacity:1}100%{top:92%;opacity:0}}
+        @keyframes scanCard{0%{top:-3px}100%{top:100%}}
+        @keyframes flicker{0%,100%{opacity:1}50%{opacity:0.85}}
         @keyframes focusRing{0%{opacity:1;transform:translate(-50%,-50%) scale(1)}60%{opacity:1;transform:translate(-50%,-50%) scale(0.75)}100%{opacity:0;transform:translate(-50%,-50%) scale(0.7)}}
       `}</style>
     </div>
