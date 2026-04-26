@@ -446,10 +446,64 @@ function Portfolio({cards,onScanNew,onDelete}){
   );
 }
 
+// ─── Shared Collection View ───────────────────────────────────────────────────
+function SharedCollection({cards,onScanOwn}){
+  const total=cards.reduce((s,c)=>s+(c.estimatedValue||0),0);
+  const sorted=[...cards].sort((a,b)=>b.estimatedValue-a.estimatedValue);
+  return(
+    <div>
+      <div style={{textAlign:"center",padding:"16px 0 20px"}}>
+        <p style={{margin:"0 0 4px",fontSize:9,color:"#C77DFF",letterSpacing:"0.2em",textTransform:"uppercase"}}>📤 Delt samling</p>
+        <p style={{margin:0,fontSize:9,color:"#333"}}>Read-only — scan dine egne kort nedenfor</p>
+      </div>
+      <div style={{background:"linear-gradient(135deg,#F5C51811,#FF6B3511)",border:"1px solid #F5C51822",borderRadius:16,padding:"20px",marginBottom:16}}>
+        <p style={{margin:"0 0 4px",fontSize:9,color:"#555",letterSpacing:"0.15em",textTransform:"uppercase"}}>Samlet Porteføljeværdi</p>
+        <p style={{margin:"0 0 12px",fontSize:34,fontWeight:700,color:"#F5C518",textShadow:"0 0 30px #F5C51855"}}>{fmtDKK(total)}</p>
+        <div style={{display:"flex",gap:16}}>
+          <div><p style={{margin:0,fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:"0.1em"}}>Kort</p><p style={{margin:"2px 0 0",fontSize:16,fontWeight:700,color:"#fff"}}>{cards.length}</p></div>
+          <div><p style={{margin:0,fontSize:9,color:"#444",textTransform:"uppercase",letterSpacing:"0.1em"}}>Mest værd</p><p style={{margin:"2px 0 0",fontSize:16,fontWeight:700,color:"#fff"}}>{fmtDKK(sorted[0]?.estimatedValue)}</p></div>
+        </div>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+        {sorted.map((card,idx)=>{
+          const tc=typeColors[card.type]||"#888";
+          return(
+            <div key={idx} style={{background:"#0d0d22",border:`1px solid ${tc}22`,borderRadius:14,overflow:"hidden",display:"flex",alignItems:"stretch"}}>
+              <div style={{width:40,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",borderRight:`1px solid ${tc}11`}}>
+                <span style={{fontSize:12,color:tc,fontWeight:700}}>{idx+1}</span>
+              </div>
+              <div style={{flex:1,minWidth:0,padding:"12px 12px",display:"flex",flexDirection:"column",justifyContent:"center",gap:3}}>
+                <p style={{margin:0,fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.name}</p>
+                <div style={{display:"flex",gap:5}}>
+                  <span style={{fontSize:9,color:"#555"}}>{card.set}</span>
+                  {card.cardNumber&&<><span style={{fontSize:9,color:"#2a2a3a"}}>·</span><span style={{fontSize:9,color:"#555"}}>Nr. {card.cardNumber.split("/")[0]}</span></>}
+                </div>
+                <span style={{background:`${tc}11`,border:`1px solid ${tc}22`,borderRadius:4,padding:"1px 6px",fontSize:8,color:tc,alignSelf:"flex-start"}}>{card.rarity}</span>
+              </div>
+              <div style={{textAlign:"right",flexShrink:0,padding:"12px 14px",display:"flex",flexDirection:"column",justifyContent:"center"}}>
+                <p style={{margin:0,fontSize:14,fontWeight:700,color:tc}}>{fmtDKK(card.estimatedValue)}</p>
+                <p style={{margin:0,fontSize:9,color:"#333"}}>est. værdi</p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <SetsSection portfolio={cards}/>
+      <div style={{marginTop:24,padding:"20px",background:"#0d0d22",border:"1px solid #C77DFF22",borderRadius:14,textAlign:"center"}}>
+        <p style={{margin:"0 0 4px",fontSize:13,fontWeight:700,color:"#fff"}}>Vil du scanne dine egne kort?</p>
+        <p style={{margin:"0 0 14px",fontSize:10,color:"#444"}}>Se hvad din samling er værd</p>
+        <button onClick={onScanOwn} style={{padding:"13px 28px",border:"none",borderRadius:10,background:"linear-gradient(135deg,#F5C518,#FF6B35)",color:"#000",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace",boxShadow:"0 4px 20px #F5C51844"}}>⚡ Start PokéScanner</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function PokemonScanner(){
   const[portfolio,setPortfolio]=useState([]);
   const[appView,setAppView]=useState("home");
+  const[sharedCards,setSharedCards]=useState(null);
+  const[copyDone,setCopyDone]=useState(false);
 
   const[rawImage,setRawImage]=useState(null);
   const[imageBase64,setImageBase64]=useState(null);
@@ -464,9 +518,29 @@ export default function PokemonScanner(){
   const fileRef=useRef();
 
   useEffect(()=>{
+    const params=new URLSearchParams(window.location.search);
+    const shareParam=params.get("share");
+    if(shareParam){
+      try{
+        const decoded=JSON.parse(decodeURIComponent(escape(atob(shareParam))));
+        setSharedCards(decoded);
+        setAppView("shared");
+        return;
+      }catch{}
+    }
     const saved=storage.get("portfolio");
     if(saved){try{setPortfolio(JSON.parse(saved.value));}catch{}}
   },[]);
+
+  const sharePortfolio=useCallback(()=>{
+    const data=portfolio.map(c=>({
+      name:c.name,set:c.set,cardNumber:c.cardNumber,
+      estimatedValue:c.estimatedValue,type:c.type,rarity:c.rarity,condition:c.condition,
+    }));
+    const encoded=btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+    const url=`${window.location.origin}${window.location.pathname}?share=${encoded}`;
+    navigator.clipboard.writeText(url).then(()=>{setCopyDone(true);setTimeout(()=>setCopyDone(false),2500);});
+  },[portfolio]);
 
   const handleCapture=useCallback(async(dataUrl)=>{
     setRawImage(dataUrl);setAppView("preview");
@@ -707,10 +781,33 @@ export default function PokemonScanner(){
           </>
         )}
 
+        {/* ── SHARED ── */}
+        {appView==="shared"&&sharedCards&&(
+          <SharedCollection cards={sharedCards} onScanOwn={()=>{
+            window.history.replaceState({},"",window.location.pathname);
+            setSharedCards(null);
+            const saved=storage.get("portfolio");
+            if(saved){try{setPortfolio(JSON.parse(saved.value));}catch{}}
+            setAppView("home");
+          }}/>
+        )}
+
         {/* ── PORTFOLIO ── */}
         {appView==="portfolio"&&(
           <>
-            <button onClick={()=>setAppView("home")} style={{background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:8,color:"#aaa",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:16,padding:"7px 14px"}}>← Tilbage</button>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+              <button onClick={()=>setAppView("home")} style={{background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:8,color:"#aaa",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",padding:"7px 14px"}}>← Tilbage</button>
+              {portfolio.length>0&&(
+                <button onClick={sharePortfolio} style={{
+                  flex:1,padding:"7px 14px",background:copyDone?"#1a2a1a":"#0d0d22",
+                  border:`1px solid ${copyDone?"#5BAD6F44":"#1e1e3a"}`,borderRadius:8,
+                  color:copyDone?"#5BAD6F":"#888",fontSize:10,cursor:"pointer",
+                  fontFamily:"'Space Mono',monospace",transition:"all 0.3s",
+                }}>
+                  {copyDone?"✓ Link kopieret!":"🔗 Del samling"}
+                </button>
+              )}
+            </div>
             {portfolio.length>0?(
               <Portfolio cards={portfolio} onScanNew={scanNew} onDelete={deleteFromPortfolio}/>
             ):(
