@@ -11,6 +11,19 @@ const storage = {
 const USD_TO_DKK = 6.88;
 const fmtDKK = (usd) => usd ? `${Math.round(usd * USD_TO_DKK)} kr.` : "—";
 
+// Kendte sætstørrelser (antal kort i sættet ekskl. secret rares)
+const SET_SIZES={
+  "Journey Together":159,"Surging Sparks":191,"Stellar Crown":175,
+  "Twilight Masquerade":167,"Paldean Fates":245,"Paradox Rift":182,
+  "Obsidian Flames":197,"Scarlet & Violet":198,"Paldea Evolved":193,
+  "151":165,"Crown Zenith":159,"Silver Tempest":195,"Lost Origin":196,
+  "Astral Radiance":189,"Brilliant Stars":172,"Fusion Strike":264,
+  "Evolving Skies":203,"Chilling Reign":198,"Battle Styles":163,
+  "Shining Fates":195,"Vivid Voltage":185,"Champion's Path":73,
+  "Darkness Ablaze":185,"Rebel Clash":192,"Sword & Shield":202,
+  "XY — Flash Fire":106,"XY — Phantom Forces":119,
+};
+
 const typeColors = {
   Fire:"#FF6B35",Water:"#4A90D9",Grass:"#5BAD6F",Electric:"#F5C518",
   Psychic:"#C77DFF",Fighting:"#C0392B",Dark:"#8B9BB4",Steel:"#95A5A6",
@@ -73,6 +86,29 @@ function Btn({onClick,disabled,gradient,children,style={}}){
       boxShadow:(!disabled&&gradient)?`0 4px 20px ${gradient.includes("F5C518")?"#F5C51844":"#C77DFF44"}`:"none",
       ...style,
     }}>{children}</button>
+  );
+}
+
+// ─── Set tracker ─────────────────────────────────────────────────────────────
+function SetTracker({setName,portfolio}){
+  if(!setName) return null;
+  const total=SET_SIZES[setName];
+  const owned=new Set(portfolio.filter(c=>c.set===setName).map(c=>c.cardNumber)).size;
+  if(!owned) return null;
+  const pct=total?Math.round((owned/total)*100):null;
+  return(
+    <div style={{padding:"14px 20px",borderTop:"1px solid #151528"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
+        <p style={{margin:0,fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase"}}>Sæt-fremskridt · {setName}</p>
+        <span style={{fontSize:11,color:"#F5C518",fontWeight:700}}>{owned}{total?`/${total}`:""} kort</span>
+      </div>
+      {total&&(
+        <div style={{height:6,background:"#111128",borderRadius:3,overflow:"hidden"}}>
+          <div style={{width:`${pct}%`,height:"100%",background:"linear-gradient(90deg,#C77DFF,#F5C518)",borderRadius:3,transition:"width 1s ease",boxShadow:"0 0 8px #F5C51844"}}/>
+        </div>
+      )}
+      {total&&<p style={{margin:"6px 0 0",fontSize:9,color:"#444"}}>{pct}% komplet{pct===100?" 🎉 — Sæt komplet!":""}</p>}
+    </div>
   );
 }
 
@@ -550,6 +586,8 @@ export default function PokemonScanner(){
                 <PriceBar label="Mint"      value={prices.mint}     max={maxPrice} color="#5BAD6F" animate={animateBars}/>
                 <PriceBar label="PSA 10"    value={prices.psa10}    max={maxPrice} color="#C77DFF" animate={animateBars}/>
               </div>
+
+              <SetTracker setName={result.set} portfolio={portfolio}/>
 
               {result.notes&&<div style={{padding:"12px 20px",borderBottom:"1px solid #151528"}}>
                 <p style={{margin:"0 0 6px",fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase"}}>Ekspert Note</p>
