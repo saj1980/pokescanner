@@ -1,5 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 
+// ─── Storage (localStorage wrapper) ──────────────────────────────────────────
+const storage = {
+  get: (key) => { try { const v = localStorage.getItem(key); return v ? { value: v } : null; } catch { return null; } },
+  set: (key, val) => { try { localStorage.setItem(key, val); } catch {} },
+  delete: (key) => { try { localStorage.removeItem(key); } catch {} },
+};
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 const USD_TO_DKK = 6.88;
 const fmtDKK = (usd) => usd ? `${Math.round(usd * USD_TO_DKK)} kr.` : "—";
@@ -339,33 +346,31 @@ export default function PokemonScanner(){
 
   // Load portfolio from storage
   useEffect(()=>{
-    (async()=>{
-      try{
-        const saved=await window.storage.get("portfolio");
-        if(saved) setPortfolio(JSON.parse(saved.value));
-        const sc=await window.storage.get("scansUsed");
-        if(sc) setScansUsed(parseInt(sc.value)||0);
-        const u=await window.storage.get("user");
-        if(u){ const parsed=JSON.parse(u.value); setUser(parsed); setIsPro(parsed.pro||false); }
-      }catch(e){}
-    })();
+    try{
+      const saved=storage.get("portfolio");
+      if(saved) setPortfolio(JSON.parse(saved.value));
+      const sc=storage.get("scansUsed");
+      if(sc) setScansUsed(parseInt(sc.value)||0);
+      const u=storage.get("user");
+      if(u){ const parsed=JSON.parse(u.value); setUser(parsed); setIsPro(parsed.pro||false); }
+    }catch(e){}
   },[]);
 
   const savePortfolio=(cards)=>{
     setPortfolio(cards);
-    window.storage.set("portfolio",JSON.stringify(cards)).catch(()=>{});
+    storage.set("portfolio",JSON.stringify(cards));
   };
 
   const bumpScans=()=>{
     const n=scansUsed+1;
     setScansUsed(n);
-    window.storage.set("scansUsed",String(n)).catch(()=>{});
+    storage.set("scansUsed",String(n));
   };
 
   const handleLogin=(name)=>{
     const u={name,pro:false};
     setUser(u);
-    window.storage.set("user",JSON.stringify(u)).catch(()=>{});
+    storage.set("user",JSON.stringify(u));
     setAppView("home");
   };
 
@@ -373,13 +378,13 @@ export default function PokemonScanner(){
     const u={...user,pro:true};
     setUser(u);
     setIsPro(true);
-    window.storage.set("user",JSON.stringify(u)).catch(()=>{});
+    storage.set("user",JSON.stringify(u));
     setShowPaywall(false);
   };
 
   const handleLogout=()=>{
     setUser(null);setIsPro(false);
-    window.storage.delete("user").catch(()=>{});
+    storage.delete("user");
     setAppView("home");
   };
 
