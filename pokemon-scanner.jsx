@@ -100,70 +100,133 @@ function setMotivation(owned,total,pct){
   return"Godt begyndt! 🚀";
 }
 
-function SetProgressCard({setName,ownedNumbers,total,compact=false}){
+// ─── Set card modal (tap number → see card → add to wantlist) ─────────────────
+function SetCardModal({setName,cardNum,wantlist,onAddToWantlist,onClose}){
+  const[card,setCard]=useState(null);
+  const[loading,setLoading]=useState(true);
+  const alreadyWanted=wantlist.some(w=>w.name?.toLowerCase()===card?.name?.toLowerCase()&&(!w.set||w.set===setName));
+
+  useEffect(()=>{
+    let cancelled=false;
+    setLoading(true);
+    fetch(`https://api.pokemontcg.io/v2/cards?q=set.name:"${encodeURIComponent(setName)}" number:${cardNum}&pageSize=1`)
+      .then(r=>r.json())
+      .then(d=>{if(!cancelled){setCard(d?.data?.[0]||null);setLoading(false);}})
+      .catch(()=>{if(!cancelled)setLoading(false);});
+    return()=>{cancelled=true;};
+  },[setName,cardNum]);
+
+  const handleAdd=()=>{
+    if(!card) return;
+    onAddToWantlist({
+      id:Date.now().toString(),
+      name:card.name,
+      set:setName,
+      estimatedValue:null,
+      image:card.images?.small||null,
+      addedAt:new Date().toISOString(),
+    });
+    onClose();
+  };
+
+  return(
+    <div onClick={onClose} style={{position:"fixed",inset:0,background:"#000000cc",zIndex:100,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#0d0d22",border:"1px solid #C77DFF44",borderRadius:20,padding:24,width:"100%",maxWidth:320,fontFamily:"'Space Mono',monospace",textAlign:"center"}}>
+        <p style={{margin:"0 0 4px",fontSize:9,color:"#555",letterSpacing:"0.15em",textTransform:"uppercase"}}>{setName} · Nr. {cardNum}</p>
+        {loading?(
+          <div style={{height:200,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <p style={{color:"#333",fontSize:10,letterSpacing:"0.1em"}}>Henter kort...</p>
+          </div>
+        ):card?(
+          <>
+            <img src={card.images?.large||card.images?.small} alt={card.name} style={{maxHeight:240,maxWidth:"100%",objectFit:"contain",borderRadius:10,boxShadow:"0 8px 32px #00000088,0 0 30px #C77DFF33",margin:"12px 0"}}/>
+            <p style={{margin:"0 0 4px",fontSize:16,fontWeight:700,color:"#fff"}}>{card.name}</p>
+            <p style={{margin:"0 0 16px",fontSize:9,color:"#555"}}>{card.rarity||""}</p>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={onClose} style={{flex:1,padding:"11px",background:"#111128",border:"1px solid #1e1e3a",borderRadius:10,color:"#888",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>Luk</button>
+              <button onClick={handleAdd} disabled={alreadyWanted} style={{
+                flex:2,padding:"11px",border:"none",borderRadius:10,fontSize:10,fontWeight:700,
+                background:alreadyWanted?"#1a1a2e":"linear-gradient(135deg,#C77DFF,#4A90D9)",
+                color:alreadyWanted?"#444":"#fff",cursor:alreadyWanted?"not-allowed":"pointer",
+                fontFamily:"'Space Mono',monospace",letterSpacing:"0.05em",
+              }}>{alreadyWanted?"⭐ På ønskelisten":"⭐ Ønsker dette kort"}</button>
+            </div>
+          </>
+        ):(
+          <>
+            <p style={{color:"#555",fontSize:11,margin:"20px 0"}}>Kunne ikke hente kortdata</p>
+            <button onClick={onClose} style={{padding:"11px 24px",background:"#111128",border:"1px solid #1e1e3a",borderRadius:10,color:"#888",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>Luk</button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function SetProgressCard({setName,ownedNumbers,total,compact=false,wantlist=[],onAddToWantlist}){
   const[showGrid,setShowGrid]=useState(false);
+  const[selectedNum,setSelectedNum]=useState(null);
   const owned=ownedNumbers.size;
   const pct=total?Math.round((owned/total)*100):null;
   const barColor=pct===100?"#5BAD6F":pct>=50?"#F5C518":"#C77DFF";
-  // Parse owned card numbers to plain integers: "078/159" → 78
   const ownedNums=useMemo(()=>new Set([...ownedNumbers].map(n=>parseInt(n.split("/")[0]))),[ownedNumbers]);
 
   return(
     <div style={{background:"#0d0d22",border:`1px solid ${barColor}33`,borderRadius:16,overflow:"hidden"}}>
+      {selectedNum&&(
+        <SetCardModal setName={setName} cardNum={selectedNum} wantlist={wantlist} onAddToWantlist={onAddToWantlist} onClose={()=>setSelectedNum(null)}/>
+      )}
       <div style={{padding:compact?"14px 16px":"20px"}}>
-        {/* Header */}
         <div style={{marginBottom:10}}>
           <p style={{margin:0,fontSize:compact?10:13,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{setName}</p>
           {pct!==null&&<p style={{margin:"3px 0 0",fontSize:9,color:barColor}}>{setMotivation(owned,total,pct)}</p>}
         </div>
-
-        {/* Big number */}
         <div style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:10}}>
           <span style={{fontSize:compact?28:36,fontWeight:700,color:barColor,textShadow:`0 0 24px ${barColor}55`,lineHeight:1}}>{owned}</span>
           {total&&<span style={{fontSize:compact?11:14,color:"#444"}}>af {total} kort</span>}
         </div>
-
-        {/* Progress bar */}
         {total&&<>
           <div style={{height:compact?10:16,background:"#111128",borderRadius:20,overflow:"hidden",boxShadow:"inset 0 2px 6px #00000055"}}>
             <div style={{width:`${pct}%`,height:"100%",background:`linear-gradient(90deg,#C77DFF88,${barColor})`,borderRadius:20,transition:"width 1.3s cubic-bezier(0.4,0,0.2,1)",boxShadow:`0 0 12px ${barColor}66`}}/>
           </div>
           <p style={{margin:"5px 0 0",fontSize:9,color:"#333",textAlign:"right"}}>{pct}%</p>
         </>}
-
-        {/* Toggle grid */}
         {total&&<button onClick={()=>setShowGrid(g=>!g)} style={{
           marginTop:10,width:"100%",padding:"8px 0",background:"#111128",
           border:"1px solid #1e1e3a",borderRadius:8,color:"#555",
-          fontSize:9,cursor:"pointer",fontFamily:"'Space Mono',monospace",
-          letterSpacing:"0.08em",
+          fontSize:9,cursor:"pointer",fontFamily:"'Space Mono',monospace",letterSpacing:"0.08em",
         }}>{showGrid?"▲ Skjul oversigt":"▼ Vis hvilke kort du har"}</button>}
       </div>
 
-      {/* Sticker-bog grid */}
       {showGrid&&total&&(
         <div style={{borderTop:"1px solid #111128",padding:"16px 16px 20px"}}>
-          <div style={{display:"flex",gap:4,marginBottom:10,alignItems:"center"}}>
+          <div style={{display:"flex",gap:4,marginBottom:10,alignItems:"center",flexWrap:"wrap"}}>
             <div style={{width:14,height:14,borderRadius:3,background:barColor,boxShadow:`0 0 6px ${barColor}88`}}/>
             <span style={{fontSize:9,color:"#555"}}>Har kortet</span>
             <div style={{width:14,height:14,borderRadius:3,background:"#111128",border:"1px solid #1e1e3a",marginLeft:8}}/>
-            <span style={{fontSize:9,color:"#555"}}>Mangler kortet</span>
+            <span style={{fontSize:9,color:"#555"}}>Mangler · tryk for at se</span>
           </div>
           <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
             {Array.from({length:total},(_,i)=>{
               const num=i+1;
               const have=ownedNums.has(num);
               return(
-                <div key={num} title={`Nr. ${num}`} style={{
-                  width:22,height:22,borderRadius:4,
-                  background:have?barColor:"#111128",
-                  border:`1px solid ${have?barColor+"88":"#1e1e2a"}`,
-                  display:"flex",alignItems:"center",justifyContent:"center",
-                  fontSize:6,fontWeight:700,
-                  color:have?"#000":"#2a2a3a",
-                  boxShadow:have?`0 0 6px ${barColor}66`:"none",
-                  flexShrink:0,
-                }}>{num}</div>
+                <div key={num} onClick={()=>{if(!have&&onAddToWantlist)setSelectedNum(num);}}
+                  title={have?`Nr. ${num} — ejet`:`Nr. ${num} — tryk for detaljer`}
+                  style={{
+                    width:22,height:22,borderRadius:4,flexShrink:0,
+                    background:have?barColor:"#111128",
+                    border:`1px solid ${have?barColor+"88":"#1e1e2a"}`,
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    fontSize:6,fontWeight:700,
+                    color:have?"#000":"#2a2a3a",
+                    boxShadow:have?`0 0 6px ${barColor}66`:"none",
+                    cursor:(!have&&onAddToWantlist)?"pointer":"default",
+                    transition:"border-color 0.15s,background 0.15s",
+                  }}
+                  onMouseEnter={e=>{if(!have&&onAddToWantlist)e.currentTarget.style.borderColor="#C77DFF66";}}
+                  onMouseLeave={e=>{if(!have&&onAddToWantlist)e.currentTarget.style.borderColor="#1e1e2a";}}
+                >{num}</div>
               );
             })}
           </div>
@@ -173,7 +236,7 @@ function SetProgressCard({setName,ownedNumbers,total,compact=false}){
   );
 }
 
-function SetsSection({portfolio}){
+function SetsSection({portfolio,wantlist=[],onAddToWantlist}){
   const sets=[...new Set(portfolio.map(c=>c.set).filter(Boolean))]
     .map(name=>({
       name,
@@ -190,7 +253,7 @@ function SetsSection({portfolio}){
     <div style={{marginTop:24}}>
       <p style={{fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase",margin:"0 0 12px"}}>Dine sæt</p>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {sets.map(s=><SetProgressCard key={s.name} setName={s.name} ownedNumbers={s.ownedNumbers} total={s.total}/>)}
+        {sets.map(s=><SetProgressCard key={s.name} setName={s.name} ownedNumbers={s.ownedNumbers} total={s.total} wantlist={wantlist} onAddToWantlist={onAddToWantlist}/>)}
       </div>
     </div>
   );
@@ -869,7 +932,7 @@ export default function PokemonScanner(){
                     <span style={{color:"#333",fontSize:18}}>›</span>
                   </div>
                 </div>
-                <SetsSection portfolio={portfolio}/>
+                <SetsSection portfolio={portfolio} wantlist={wantlist} onAddToWantlist={addToWantlist}/>
               </>
             )}
           </>
@@ -977,7 +1040,7 @@ export default function PokemonScanner(){
               {result.set&&SET_SIZES[result.set]&&(()=>{
                 const owned=new Set(portfolio.filter(c=>c.set===result.set).map(c=>c.cardNumber)).size;
                 const ownedNumbers=new Set(portfolio.filter(c=>c.set===result.set).map(c=>c.cardNumber).filter(Boolean));
-                return ownedNumbers.size>0?<div style={{borderTop:"1px solid #151528"}}><div style={{padding:"14px 20px"}}><SetProgressCard setName={result.set} ownedNumbers={ownedNumbers} total={SET_SIZES[result.set]} compact/></div></div>:null;
+                return ownedNumbers.size>0?<div style={{borderTop:"1px solid #151528"}}><div style={{padding:"14px 20px"}}><SetProgressCard setName={result.set} ownedNumbers={ownedNumbers} total={SET_SIZES[result.set]} compact wantlist={wantlist} onAddToWantlist={addToWantlist}/></div></div>:null;
               })()}
 
               {result.notes&&<div style={{padding:"12px 20px",borderBottom:"1px solid #151528"}}>
