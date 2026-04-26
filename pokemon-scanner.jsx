@@ -550,7 +550,7 @@ export default function PokemonScanner(){
         {/* ── CAMERA ── */}
         {appView==="camera"&&(
           <>
-            <button onClick={()=>setAppView("home")} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:12}}>← Tilbage</button>
+            <button onClick={()=>setAppView("home")} style={{background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:8,color:"#aaa",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:12,padding:"7px 14px"}}>← Tilbage</button>
             <div style={{marginTop:4}}><CameraViewfinder onCapture={handleCapture}/></div>
             <div style={{display:"flex",gap:8,marginTop:10}}>
               <button onClick={()=>fileRef.current?.click()} style={{flex:1,padding:13,background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:10,color:"#666",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>📁 Vælg fil</button>
@@ -668,7 +668,7 @@ export default function PokemonScanner(){
         {/* ── PORTFOLIO ── */}
         {appView==="portfolio"&&(
           <>
-            <button onClick={()=>setAppView("home")} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:16}}>← Tilbage</button>
+            <button onClick={()=>setAppView("home")} style={{background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:8,color:"#aaa",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:16,padding:"7px 14px"}}>← Tilbage</button>
             {portfolio.length>0?(
               <Portfolio cards={portfolio} onScanNew={scanNew} onDelete={deleteFromPortfolio}/>
             ):(
