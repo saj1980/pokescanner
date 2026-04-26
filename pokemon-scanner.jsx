@@ -446,6 +446,116 @@ function Portfolio({cards,onScanNew,onDelete}){
   );
 }
 
+// ─── Wantlist View ───────────────────────────────────────────────────────────
+function WantlistView({wantlist,onAdd,onRemove,onBack,onShare,copyDone}){
+  const[name,setName]=useState("");
+  const[set,setSet]=useState("");
+
+  const submit=(e)=>{
+    e.preventDefault();
+    const n=name.trim();
+    if(!n) return;
+    onAdd({id:Date.now().toString(),name:n,set:set.trim(),addedAt:new Date().toISOString()});
+    setName("");setSet("");
+  };
+
+  return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16}}>
+        <button onClick={onBack} style={{background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:8,color:"#aaa",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",padding:"7px 14px"}}>← Tilbage</button>
+        {wantlist.length>0&&(
+          <button onClick={onShare} style={{
+            flex:1,padding:"7px 14px",background:copyDone?"#1a2a1a":"#0d0d22",
+            border:`1px solid ${copyDone?"#5BAD6F44":"#1e1e3a"}`,borderRadius:8,
+            color:copyDone?"#5BAD6F":"#888",fontSize:10,cursor:"pointer",
+            fontFamily:"'Space Mono',monospace",transition:"all 0.3s",
+          }}>{copyDone?"✓ Link kopieret!":"🔗 Del ønskeliste"}</button>
+        )}
+      </div>
+
+      <div style={{background:"linear-gradient(135deg,#C77DFF11,#4A90D911)",border:"1px solid #C77DFF22",borderRadius:16,padding:"20px",marginBottom:16}}>
+        <p style={{margin:"0 0 4px",fontSize:9,color:"#C77DFF",letterSpacing:"0.15em",textTransform:"uppercase"}}>⭐ Ønskeliste</p>
+        <p style={{margin:0,fontSize:28,fontWeight:700,color:"#fff"}}>{wantlist.length} <span style={{fontSize:13,color:"#444",fontWeight:400}}>kort på listen</span></p>
+      </div>
+
+      {/* Add form */}
+      <form onSubmit={submit} style={{marginBottom:16,background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:14,padding:16}}>
+        <p style={{margin:"0 0 10px",fontSize:9,color:"#555",letterSpacing:"0.15em",textTransform:"uppercase"}}>Tilføj kort til ønskeliste</p>
+        <input
+          value={name} onChange={e=>setName(e.target.value)}
+          placeholder="Pokémon navn (fx Charizard)"
+          style={{width:"100%",padding:"10px 12px",background:"#111128",border:"1px solid #1e1e3a",borderRadius:8,color:"#fff",fontSize:11,fontFamily:"'Space Mono',monospace",marginBottom:8,boxSizing:"border-box",outline:"none"}}
+        />
+        <input
+          value={set} onChange={e=>setSet(e.target.value)}
+          placeholder="Sæt (fx Surging Sparks) — valgfrit"
+          style={{width:"100%",padding:"10px 12px",background:"#111128",border:"1px solid #1e1e3a",borderRadius:8,color:"#fff",fontSize:11,fontFamily:"'Space Mono',monospace",marginBottom:10,boxSizing:"border-box",outline:"none"}}
+        />
+        <button type="submit" disabled={!name.trim()} style={{
+          width:"100%",padding:"11px",border:"none",borderRadius:8,
+          background:name.trim()?"linear-gradient(135deg,#C77DFF,#4A90D9)":"#1a1a2e",
+          color:name.trim()?"#fff":"#333",fontSize:11,fontWeight:700,
+          cursor:name.trim()?"pointer":"not-allowed",fontFamily:"'Space Mono',monospace",letterSpacing:"0.08em",
+        }}>⭐ Tilføj til ønskeliste</button>
+      </form>
+
+      {/* List */}
+      {wantlist.length===0?(
+        <div style={{textAlign:"center",padding:"40px 20px",color:"#2a2a3a",fontSize:11}}>
+          <div style={{fontSize:32,marginBottom:10,opacity:0.3}}>⭐</div>
+          <p style={{margin:0}}>Ingen kort på ønskelisten endnu</p>
+          <p style={{margin:"6px 0 0",fontSize:9,color:"#1e1e3a"}}>Tilføj kort du gerne vil have</p>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {wantlist.map(item=>(
+            <div key={item.id} style={{background:"#0d0d22",border:"1px solid #C77DFF22",borderRadius:12,display:"flex",alignItems:"center",padding:"12px 14px",gap:12}}>
+              <span style={{fontSize:18,flexShrink:0}}>⭐</span>
+              <div style={{flex:1,minWidth:0}}>
+                <p style={{margin:0,fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}</p>
+                {item.set&&<p style={{margin:"2px 0 0",fontSize:9,color:"#555"}}>{item.set}</p>}
+                {item.estimatedValue&&<p style={{margin:"2px 0 0",fontSize:9,color:"#C77DFF"}}>{fmtDKK(item.estimatedValue)} est.</p>}
+              </div>
+              <button onClick={()=>onRemove(item.id)} style={{background:"transparent",border:"none",color:"#2a2a3a",fontSize:16,cursor:"pointer",padding:0,flexShrink:0}} title="Fjern">✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Shared Wantlist View ─────────────────────────────────────────────────────
+function SharedWantlist({items,onScanOwn}){
+  return(
+    <div>
+      <div style={{textAlign:"center",padding:"16px 0 20px"}}>
+        <p style={{margin:"0 0 4px",fontSize:9,color:"#C77DFF",letterSpacing:"0.2em",textTransform:"uppercase"}}>⭐ Delt ønskeliste</p>
+        <p style={{margin:0,fontSize:9,color:"#333"}}>Disse kort ønskes — hjælp dem med at finde dem!</p>
+      </div>
+      <div style={{background:"linear-gradient(135deg,#C77DFF11,#4A90D911)",border:"1px solid #C77DFF22",borderRadius:16,padding:"20px",marginBottom:16}}>
+        <p style={{margin:0,fontSize:28,fontWeight:700,color:"#fff"}}>{items.length} <span style={{fontSize:13,color:"#444",fontWeight:400}}>kort ønskes</span></p>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:24}}>
+        {items.map((item,idx)=>(
+          <div key={idx} style={{background:"#0d0d22",border:"1px solid #C77DFF22",borderRadius:12,display:"flex",alignItems:"center",padding:"12px 14px",gap:12}}>
+            <span style={{fontSize:18}}>⭐</span>
+            <div style={{flex:1}}>
+              <p style={{margin:0,fontSize:12,fontWeight:700,color:"#fff"}}>{item.name}</p>
+              {item.set&&<p style={{margin:"2px 0 0",fontSize:9,color:"#555"}}>{item.set}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{padding:"20px",background:"#0d0d22",border:"1px solid #C77DFF22",borderRadius:14,textAlign:"center"}}>
+        <p style={{margin:"0 0 4px",fontSize:13,fontWeight:700,color:"#fff"}}>Har du et af disse kort?</p>
+        <p style={{margin:"0 0 14px",fontSize:10,color:"#444"}}>Scan det og se hvad det er værd</p>
+        <button onClick={onScanOwn} style={{padding:"13px 28px",border:"none",borderRadius:10,background:"linear-gradient(135deg,#C77DFF,#4A90D9)",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>⚡ Scan kort</button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Shared Collection View ───────────────────────────────────────────────────
 function SharedCollection({cards,onScanOwn}){
   const total=cards.reduce((s,c)=>s+(c.estimatedValue||0),0);
@@ -501,9 +611,12 @@ function SharedCollection({cards,onScanOwn}){
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function PokemonScanner(){
   const[portfolio,setPortfolio]=useState([]);
+  const[wantlist,setWantlist]=useState([]);
   const[appView,setAppView]=useState("home");
   const[sharedCards,setSharedCards]=useState(null);
+  const[sharedWantlist,setSharedWantlist]=useState(null);
   const[copyDone,setCopyDone]=useState(false);
+  const[wantlistCopyDone,setWantlistCopyDone]=useState(false);
 
   const[rawImage,setRawImage]=useState(null);
   const[imageBase64,setImageBase64]=useState(null);
@@ -514,22 +627,30 @@ export default function PokemonScanner(){
   const[showConfetti,setShowConfetti]=useState(false);
   const[isRecord,setIsRecord]=useState(false);
   const[isDuplicate,setIsDuplicate]=useState(false);
+  const[isWanted,setIsWanted]=useState(false);
 
   const fileRef=useRef();
 
   useEffect(()=>{
     const params=new URLSearchParams(window.location.search);
     const shareParam=params.get("share");
+    const wantParam=params.get("wantlist");
     if(shareParam){
       try{
         const decoded=JSON.parse(decodeURIComponent(escape(atob(shareParam))));
-        setSharedCards(decoded);
-        setAppView("shared");
-        return;
+        setSharedCards(decoded);setAppView("shared");return;
+      }catch{}
+    }
+    if(wantParam){
+      try{
+        const decoded=JSON.parse(decodeURIComponent(escape(atob(wantParam))));
+        setSharedWantlist(decoded);setAppView("sharedwantlist");return;
       }catch{}
     }
     const saved=storage.get("portfolio");
     if(saved){try{setPortfolio(JSON.parse(saved.value));}catch{}}
+    const savedWant=storage.get("wantlist");
+    if(savedWant){try{setWantlist(JSON.parse(savedWant.value));}catch{}}
   },[]);
 
   const sharePortfolio=useCallback(()=>{
@@ -541,6 +662,35 @@ export default function PokemonScanner(){
     const url=`${window.location.origin}${window.location.pathname}?share=${encoded}`;
     navigator.clipboard.writeText(url).then(()=>{setCopyDone(true);setTimeout(()=>setCopyDone(false),2500);});
   },[portfolio]);
+
+  const shareWantlist=useCallback(()=>{
+    const data=wantlist.map(w=>({name:w.name,set:w.set}));
+    const encoded=btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+    const url=`${window.location.origin}${window.location.pathname}?wantlist=${encoded}`;
+    navigator.clipboard.writeText(url).then(()=>{setWantlistCopyDone(true);setTimeout(()=>setWantlistCopyDone(false),2500);});
+  },[wantlist]);
+
+  const addToWantlist=useCallback((item)=>{
+    setWantlist(prev=>{
+      const updated=[item,...prev];
+      storage.set("wantlist",JSON.stringify(updated));
+      return updated;
+    });
+  },[]);
+
+  const removeFromWantlist=useCallback((id)=>{
+    setWantlist(prev=>{
+      const updated=prev.filter(w=>w.id!==id);
+      storage.set("wantlist",JSON.stringify(updated));
+      return updated;
+    });
+  },[]);
+
+  const addResultToWantlist=useCallback(()=>{
+    if(!result) return;
+    const item={id:Date.now().toString(),name:result.name,set:result.set,estimatedValue:result.estimatedValue,addedAt:new Date().toISOString()};
+    addToWantlist(item);
+  },[result,addToWantlist]);
 
   const handleCapture=useCallback(async(dataUrl)=>{
     setRawImage(dataUrl);setAppView("preview");
@@ -576,6 +726,7 @@ export default function PokemonScanner(){
       const maxInPortfolio=portfolio.reduce((m,c)=>Math.max(m,c.estimatedValue||0),0);
       setIsRecord(portfolio.length>0&&val>maxInPortfolio);
       setIsDuplicate(portfolio.some(c=>c.name?.toLowerCase()===parsed.name?.toLowerCase()));
+      setIsWanted(wantlist.some(w=>w.name?.toLowerCase()===parsed.name?.toLowerCase()));
       if(val*USD_TO_DKK>=50){setShowConfetti(true);}
     }catch(err){setError(err.message);}
     finally{setLoading(false);}
@@ -596,7 +747,7 @@ export default function PokemonScanner(){
   };
 
   const scanNew=()=>{
-    setAppView("camera");setResult(null);setRawImage(null);setError(null);setAnimateBars(false);setShowConfetti(false);setIsRecord(false);setIsDuplicate(false);
+    setAppView("camera");setResult(null);setRawImage(null);setError(null);setAnimateBars(false);setShowConfetti(false);setIsRecord(false);setIsDuplicate(false);setIsWanted(false);
   };
 
   const tc=result?.type&&typeColors[result.type]?typeColors[result.type]:"#F5C518";
@@ -616,11 +767,16 @@ export default function PokemonScanner(){
           <div style={{cursor:"pointer"}} onClick={()=>setAppView("home")}>
             <span style={{fontSize:18,fontWeight:700,background:"linear-gradient(135deg,#F5C518,#FF6B35)",WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",letterSpacing:"0.08em"}}>⚡ PokéScanner</span>
           </div>
-          {portfolio.length>0&&(
-            <button onClick={()=>setAppView("portfolio")} style={{background:"transparent",border:"1px solid #1e1e3a",borderRadius:8,padding:"6px 12px",color:"#666",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
-              📁 {portfolio.length} kort
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>setAppView("wantlist")} style={{background:"transparent",border:"1px solid #1e1e3a",borderRadius:8,padding:"6px 10px",color:"#C77DFF",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+              ⭐{wantlist.length>0&&` ${wantlist.length}`}
             </button>
-          )}
+            {portfolio.length>0&&(
+              <button onClick={()=>setAppView("portfolio")} style={{background:"transparent",border:"1px solid #1e1e3a",borderRadius:8,padding:"6px 12px",color:"#666",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>
+                📁 {portfolio.length}
+              </button>
+            )}
+          </div>
         </div>
 
         {/* ── HOME ── */}
@@ -711,6 +867,15 @@ export default function PokemonScanner(){
                 </div>
               </div>
             )}
+            {isWanted&&(
+              <div style={{marginBottom:12,padding:"10px 16px",background:"linear-gradient(135deg,#C77DFF22,#4A90D922)",border:"1px solid #C77DFF66",borderRadius:12,display:"flex",alignItems:"center",gap:10,animation:"recordPop 0.5s cubic-bezier(0.175,0.885,0.32,1.275)"}}>
+                <span style={{fontSize:22}}>⭐</span>
+                <div>
+                  <p style={{margin:0,fontSize:12,fontWeight:700,color:"#C77DFF",letterSpacing:"0.05em"}}>FUNDET!</p>
+                  <p style={{margin:0,fontSize:10,color:"#888"}}>Dette kort er på din ønskeliste</p>
+                </div>
+              </div>
+            )}
             {rawImage&&(
               <div style={{background:"repeating-conic-gradient(#111128 0% 25%,#0d0d22 0% 50%) 0 0/20px 20px",borderRadius:16,border:`1px solid ${tc}33`,marginBottom:16,display:"flex",alignItems:"center",justifyContent:"center"}}>
                 <img src={rawImage} alt={result.name} style={{maxWidth:"72%",maxHeight:340,objectFit:"contain",display:"block",margin:"20px auto",filter:`drop-shadow(0 8px 32px rgba(0,0,0,0.9)) drop-shadow(0 0 20px ${tc}44)`}}/>
@@ -778,7 +943,39 @@ export default function PokemonScanner(){
               }}>💾 Gem i portefølje</button>
               <button onClick={scanNew} style={{padding:"13px 16px",background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:10,color:"#555",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>Scan ny</button>
             </div>
+            {result&&!wantlist.some(w=>w.name?.toLowerCase()===result.name?.toLowerCase())&&(
+              <button onClick={addResultToWantlist} style={{
+                width:"100%",padding:"11px",border:"1px solid #C77DFF44",borderRadius:10,
+                background:"transparent",color:"#C77DFF",fontSize:10,fontWeight:700,
+                cursor:"pointer",fontFamily:"'Space Mono',monospace",letterSpacing:"0.08em",
+              }}>⭐ Føj til ønskeliste</button>
+            )}
           </>
+        )}
+
+        {/* ── WANTLIST ── */}
+        {appView==="wantlist"&&(
+          <WantlistView
+            wantlist={wantlist}
+            onAdd={addToWantlist}
+            onRemove={removeFromWantlist}
+            onBack={()=>setAppView("home")}
+            onShare={shareWantlist}
+            copyDone={wantlistCopyDone}
+          />
+        )}
+
+        {/* ── SHARED WANTLIST ── */}
+        {appView==="sharedwantlist"&&sharedWantlist&&(
+          <SharedWantlist items={sharedWantlist} onScanOwn={()=>{
+            window.history.replaceState({},"",window.location.pathname);
+            setSharedWantlist(null);
+            const saved=storage.get("portfolio");
+            if(saved){try{setPortfolio(JSON.parse(saved.value));}catch{}}
+            const savedWant=storage.get("wantlist");
+            if(savedWant){try{setWantlist(JSON.parse(savedWant.value));}catch{}}
+            setAppView("home");
+          }}/>
         )}
 
         {/* ── SHARED ── */}
