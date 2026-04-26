@@ -338,6 +338,7 @@ export default function PokemonScanner(){
   const[animateBars,setAnimateBars]=useState(false);
   const[showConfetti,setShowConfetti]=useState(false);
   const[isRecord,setIsRecord]=useState(false);
+  const[isDuplicate,setIsDuplicate]=useState(false);
 
   const fileRef=useRef();
 
@@ -376,11 +377,10 @@ export default function PokemonScanner(){
       setResult(parsed);
       setTimeout(()=>setAnimateBars(true),100);
       setAppView("result");
-      // Konfetti + rekord check
       const val=parsed.estimatedValue||0;
       const maxInPortfolio=portfolio.reduce((m,c)=>Math.max(m,c.estimatedValue||0),0);
-      const rec=portfolio.length>0&&val>maxInPortfolio;
-      setIsRecord(rec);
+      setIsRecord(portfolio.length>0&&val>maxInPortfolio);
+      setIsDuplicate(portfolio.some(c=>c.name?.toLowerCase()===parsed.name?.toLowerCase()));
       if(val*USD_TO_DKK>=50){setShowConfetti(true);}
     }catch(err){setError(err.message);}
     finally{setLoading(false);}
@@ -395,7 +395,7 @@ export default function PokemonScanner(){
   };
 
   const scanNew=()=>{
-    setAppView("camera");setResult(null);setRawImage(null);setError(null);setAnimateBars(false);setShowConfetti(false);setIsRecord(false);
+    setAppView("camera");setResult(null);setRawImage(null);setError(null);setAnimateBars(false);setShowConfetti(false);setIsRecord(false);setIsDuplicate(false);
   };
 
   const tc=result?.type&&typeColors[result.type]?typeColors[result.type]:"#F5C518";
@@ -498,6 +498,15 @@ export default function PokemonScanner(){
                 <div>
                   <p style={{margin:0,fontSize:12,fontWeight:700,color:"#F5C518",letterSpacing:"0.05em"}}>NY REKORD!</p>
                   <p style={{margin:0,fontSize:10,color:"#888"}}>Dit dyreste kort nogensinde</p>
+                </div>
+              </div>
+            )}
+            {isDuplicate&&(
+              <div style={{marginBottom:12,padding:"10px 16px",background:"#1a1000",border:"1px solid #FF6B3566",borderRadius:12,display:"flex",alignItems:"center",gap:10,animation:"recordPop 0.4s cubic-bezier(0.175,0.885,0.32,1.275)"}}>
+                <span style={{fontSize:20}}>⚠️</span>
+                <div>
+                  <p style={{margin:0,fontSize:12,fontWeight:700,color:"#FF6B35",letterSpacing:"0.05em"}}>Du har dette kort</p>
+                  <p style={{margin:0,fontSize:10,color:"#888"}}>Dette kort er allerede i din portefølje</p>
                 </div>
               </div>
             )}
