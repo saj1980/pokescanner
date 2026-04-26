@@ -118,11 +118,20 @@ function CameraViewfinder({onCapture}){
   const videoRef=useRef();
   const[ready,setReady]=useState(false);
   const[camErr,setCamErr]=useState(null);
+  const[focusPt,setFocusPt]=useState(null); // {x,y} in px relative to container
+
   useEffect(()=>{
     let stream;
     (async()=>{
       try{
-        stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment",width:{ideal:1280},height:{ideal:960}}});
+        stream=await navigator.mediaDevices.getUserMedia({
+          video:{
+            facingMode:"environment",
+            width:{ideal:1920},
+            height:{ideal:1440},
+            advanced:[{focusMode:"continuous"}],
+          },
+        });
         videoRef.current.srcObject=stream;
         videoRef.current.play();
         setReady(true);
@@ -130,6 +139,30 @@ function CameraViewfinder({onCapture}){
     })();
     return()=>{if(stream)stream.getTracks().forEach(t=>t.stop());};
   },[]);
+
+  const tapToFocus=async(e)=>{
+    const rect=e.currentTarget.getBoundingClientRect();
+    const px=e.clientX-rect.left;
+    const py=e.clientY-rect.top;
+    // normalized [0,1] — x/y relative to the video element
+    const nx=px/rect.width;
+    const ny=py/rect.height;
+
+    setFocusPt({x:px,y:py});
+    setTimeout(()=>setFocusPt(null),1400);
+
+    const track=videoRef.current?.srcObject?.getVideoTracks()[0];
+    if(!track) return;
+    try{
+      const caps=track.getCapabilities?.()??{};
+      const adv={};
+      if(caps.focusMode?.includes("single-shot")) adv.focusMode="single-shot";
+      else if(caps.focusMode?.includes("manual")) adv.focusMode="manual";
+      if(caps.pointsOfInterest) adv.pointsOfInterest=[{x:nx,y:ny}];
+      if(Object.keys(adv).length) await track.applyConstraints({advanced:[adv]});
+    }catch{}
+  };
+
   const capture=()=>{
     const v=videoRef.current;
     const c=document.createElement("canvas");
@@ -137,8 +170,9 @@ function CameraViewfinder({onCapture}){
     c.getContext("2d").drawImage(v,0,0);
     onCapture(c.toDataURL("image/jpeg",0.92));
   };
+
   return(
-    <div style={{position:"relative",width:"100%",aspectRatio:"3/4",maxHeight:440,background:"#060610",borderRadius:14,overflow:"hidden"}}>
+    <div onClick={tapToFocus} style={{position:"relative",width:"100%",aspectRatio:"3/4",maxHeight:440,background:"#060610",borderRadius:14,overflow:"hidden",cursor:"crosshair"}}>
       <video ref={videoRef} style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}} muted playsInline/>
       {ready&&<>
         <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,#000000bb 0%,transparent 18%,transparent 82%,#000000bb 100%)",pointerEvents:"none"}}/>
@@ -147,11 +181,19 @@ function CameraViewfinder({onCapture}){
           <div style={{position:"absolute",inset:0,borderRadius:10,boxShadow:"0 0 0 2px #F5C51866,0 0 20px #F5C51833",animation:"pulse 2s ease-in-out infinite"}}/>
           {[{top:0,left:0,borderTop:"3px solid #F5C518",borderLeft:"3px solid #F5C518",borderRadius:"6px 0 0 0"},{top:0,right:0,borderTop:"3px solid #F5C518",borderRight:"3px solid #F5C518",borderRadius:"0 6px 0 0"},{bottom:0,left:0,borderBottom:"3px solid #F5C518",borderLeft:"3px solid #F5C518",borderRadius:"0 0 0 6px"},{bottom:0,right:0,borderBottom:"3px solid #F5C518",borderRight:"3px solid #F5C518",borderRadius:"0 0 6px 0"}].map((s,i)=><div key={i} style={{position:"absolute",width:28,height:28,...s}}/>)}
           <div style={{position:"absolute",left:4,right:4,height:2,background:"linear-gradient(90deg,transparent,#F5C518cc,transparent)",animation:"scanline 2.5s ease-in-out infinite",borderRadius:1}}/>
-          <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <p style={{margin:0,fontSize:11,color:"#ffffff44",letterSpacing:"0.12em",textTransform:"uppercase",textAlign:"center",textShadow:"0 1px 4px #000"}}>Placer kortet inden for rammen</p>
-          </div>
         </div>
-        <button onClick={capture} style={{position:"absolute",bottom:20,left:"50%",transform:"translateX(-50%)",width:62,height:62,borderRadius:"50%",background:"linear-gradient(135deg,#F5C518,#FF6B35)",border:"3px solid #fff",cursor:"pointer",boxShadow:"0 4px 20px #00000088,0 0 20px #F5C51866",fontSize:22}}>📸</button>
+
+        {/* Tap-to-focus ring */}
+        {focusPt&&(
+          <div style={{position:"absolute",left:focusPt.x,top:focusPt.y,transform:"translate(-50%,-50%)",width:56,height:56,borderRadius:"50%",border:"2px solid #F5C518",boxShadow:"0 0 0 1px #00000066",pointerEvents:"none",animation:"focusRing 1.4s ease-out forwards"}}/>
+        )}
+
+        {/* Distance hint */}
+        <div style={{position:"absolute",bottom:90,left:0,right:0,textAlign:"center",pointerEvents:"none"}}>
+          <span style={{fontSize:10,color:"#ffffff55",letterSpacing:"0.1em",textShadow:"0 1px 4px #000"}}>Hold 15–20 cm fra kortet · tryk for fokus</span>
+        </div>
+
+        <button onClick={e=>{e.stopPropagation();capture();}} style={{position:"absolute",bottom:20,left:"50%",transform:"translateX(-50%)",width:62,height:62,borderRadius:"50%",background:"linear-gradient(135deg,#F5C518,#FF6B35)",border:"3px solid #fff",cursor:"pointer",boxShadow:"0 4px 20px #00000088,0 0 20px #F5C51866",fontSize:22}}>📸</button>
       </>}
       {camErr&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}><p style={{color:"#555",fontSize:12,lineHeight:1.6,textAlign:"center"}}>{camErr}</p></div>}
       {!ready&&!camErr&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center"}}><p style={{color:"#333",fontSize:11,letterSpacing:"0.15em",textTransform:"uppercase"}}>Starter kamera...</p></div>}
@@ -480,6 +522,7 @@ export default function PokemonScanner(){
         @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
         @keyframes pulse{0%,100%{box-shadow:0 0 0 2px #F5C51844,0 0 20px #F5C51822}50%{box-shadow:0 0 0 2px #F5C518aa,0 0 30px #F5C51855}}
         @keyframes scanline{0%{top:8%;opacity:0}10%{opacity:1}90%{opacity:1}100%{top:92%;opacity:0}}
+        @keyframes focusRing{0%{opacity:1;transform:translate(-50%,-50%) scale(1)}60%{opacity:1;transform:translate(-50%,-50%) scale(0.75)}100%{opacity:0;transform:translate(-50%,-50%) scale(0.7)}}
       `}</style>
     </div>
   );
