@@ -90,10 +90,6 @@ function Btn({onClick,disabled,gradient,children,style={}}){
 }
 
 // ─── Set progress ─────────────────────────────────────────────────────────────
-function bulbapediaUrl(setName){
-  return`https://bulbapedia.bulbagarden.net/wiki/${encodeURIComponent(setName.replace(/ /g,"_"))}_(TCG)`;
-}
-
 function setMotivation(owned,total,pct){
   if(pct===100) return"Sæt komplet! 🎉";
   const left=total-owned;
@@ -104,30 +100,75 @@ function setMotivation(owned,total,pct){
   return"Godt begyndt! 🚀";
 }
 
-function SetProgressCard({setName,owned,total,compact=false}){
+function SetProgressCard({setName,ownedNumbers,total,compact=false}){
+  const[showGrid,setShowGrid]=useState(false);
+  const owned=ownedNumbers.size;
   const pct=total?Math.round((owned/total)*100):null;
   const barColor=pct===100?"#5BAD6F":pct>=50?"#F5C518":"#C77DFF";
+  // Parse owned card numbers to plain integers: "078/159" → 78
+  const ownedNums=useMemo(()=>new Set([...ownedNumbers].map(n=>parseInt(n.split("/")[0]))),[ownedNumbers]);
+
   return(
-    <div style={{background:"#0d0d22",border:`1px solid ${barColor}33`,borderRadius:16,padding:compact?"14px 16px":"20px",marginBottom:compact?0:0}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-        <div style={{flex:1,minWidth:0}}>
+    <div style={{background:"#0d0d22",border:`1px solid ${barColor}33`,borderRadius:16,overflow:"hidden"}}>
+      <div style={{padding:compact?"14px 16px":"20px"}}>
+        {/* Header */}
+        <div style={{marginBottom:10}}>
           <p style={{margin:0,fontSize:compact?10:13,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{setName}</p>
           {pct!==null&&<p style={{margin:"3px 0 0",fontSize:9,color:barColor}}>{setMotivation(owned,total,pct)}</p>}
         </div>
-        <a href={bulbapediaUrl(setName)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{flexShrink:0,marginLeft:10,fontSize:9,color:"#4A90D9",textDecoration:"none",border:"1px solid #4A90D933",borderRadius:6,padding:"3px 8px",whiteSpace:"nowrap"}}>Kortliste ↗</a>
-      </div>
 
-      <div style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:10}}>
-        <span style={{fontSize:compact?28:36,fontWeight:700,color:barColor,textShadow:`0 0 24px ${barColor}55`,lineHeight:1}}>{owned}</span>
-        {total&&<span style={{fontSize:compact?11:14,color:"#444"}}>af {total} kort</span>}
-      </div>
-
-      {total&&<>
-        <div style={{height:compact?10:16,background:"#111128",borderRadius:20,overflow:"hidden",boxShadow:"inset 0 2px 6px #00000055"}}>
-          <div style={{width:`${pct}%`,height:"100%",background:`linear-gradient(90deg,#C77DFF88,${barColor})`,borderRadius:20,transition:"width 1.3s cubic-bezier(0.4,0,0.2,1)",boxShadow:`0 0 12px ${barColor}66`}}/>
+        {/* Big number */}
+        <div style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:10}}>
+          <span style={{fontSize:compact?28:36,fontWeight:700,color:barColor,textShadow:`0 0 24px ${barColor}55`,lineHeight:1}}>{owned}</span>
+          {total&&<span style={{fontSize:compact?11:14,color:"#444"}}>af {total} kort</span>}
         </div>
-        <p style={{margin:"5px 0 0",fontSize:9,color:"#333",textAlign:"right"}}>{pct}%</p>
-      </>}
+
+        {/* Progress bar */}
+        {total&&<>
+          <div style={{height:compact?10:16,background:"#111128",borderRadius:20,overflow:"hidden",boxShadow:"inset 0 2px 6px #00000055"}}>
+            <div style={{width:`${pct}%`,height:"100%",background:`linear-gradient(90deg,#C77DFF88,${barColor})`,borderRadius:20,transition:"width 1.3s cubic-bezier(0.4,0,0.2,1)",boxShadow:`0 0 12px ${barColor}66`}}/>
+          </div>
+          <p style={{margin:"5px 0 0",fontSize:9,color:"#333",textAlign:"right"}}>{pct}%</p>
+        </>}
+
+        {/* Toggle grid */}
+        {total&&<button onClick={()=>setShowGrid(g=>!g)} style={{
+          marginTop:10,width:"100%",padding:"8px 0",background:"#111128",
+          border:"1px solid #1e1e3a",borderRadius:8,color:"#555",
+          fontSize:9,cursor:"pointer",fontFamily:"'Space Mono',monospace",
+          letterSpacing:"0.08em",
+        }}>{showGrid?"▲ Skjul oversigt":"▼ Vis hvilke kort du har"}</button>}
+      </div>
+
+      {/* Sticker-bog grid */}
+      {showGrid&&total&&(
+        <div style={{borderTop:"1px solid #111128",padding:"16px 16px 20px"}}>
+          <div style={{display:"flex",gap:4,marginBottom:10,alignItems:"center"}}>
+            <div style={{width:14,height:14,borderRadius:3,background:barColor,boxShadow:`0 0 6px ${barColor}88`}}/>
+            <span style={{fontSize:9,color:"#555"}}>Har kortet</span>
+            <div style={{width:14,height:14,borderRadius:3,background:"#111128",border:"1px solid #1e1e3a",marginLeft:8}}/>
+            <span style={{fontSize:9,color:"#555"}}>Mangler kortet</span>
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:3}}>
+            {Array.from({length:total},(_,i)=>{
+              const num=i+1;
+              const have=ownedNums.has(num);
+              return(
+                <div key={num} title={`Nr. ${num}`} style={{
+                  width:22,height:22,borderRadius:4,
+                  background:have?barColor:"#111128",
+                  border:`1px solid ${have?barColor+"88":"#1e1e2a"}`,
+                  display:"flex",alignItems:"center",justifyContent:"center",
+                  fontSize:6,fontWeight:700,
+                  color:have?"#000":"#2a2a3a",
+                  boxShadow:have?`0 0 6px ${barColor}66`:"none",
+                  flexShrink:0,
+                }}>{num}</div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -136,12 +177,12 @@ function SetsSection({portfolio}){
   const sets=[...new Set(portfolio.map(c=>c.set).filter(Boolean))]
     .map(name=>({
       name,
-      owned:new Set(portfolio.filter(c=>c.set===name).map(c=>c.cardNumber)).size,
+      ownedNumbers:new Set(portfolio.filter(c=>c.set===name).map(c=>c.cardNumber).filter(Boolean)),
       total:SET_SIZES[name]||null,
     }))
     .sort((a,b)=>{
-      const pa=a.total?(a.owned/a.total):0;
-      const pb=b.total?(b.owned/b.total):0;
+      const pa=a.total?(a.ownedNumbers.size/a.total):0;
+      const pb=b.total?(b.ownedNumbers.size/b.total):0;
       return pb-pa;
     });
   if(!sets.length) return null;
@@ -149,7 +190,7 @@ function SetsSection({portfolio}){
     <div style={{marginTop:24}}>
       <p style={{fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase",margin:"0 0 12px"}}>Dine sæt</p>
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {sets.map(s=><SetProgressCard key={s.name} setName={s.name} owned={s.owned} total={s.total}/>)}
+        {sets.map(s=><SetProgressCard key={s.name} setName={s.name} ownedNumbers={s.ownedNumbers} total={s.total}/>)}
       </div>
     </div>
   );
@@ -639,7 +680,8 @@ export default function PokemonScanner(){
 
               {result.set&&SET_SIZES[result.set]&&(()=>{
                 const owned=new Set(portfolio.filter(c=>c.set===result.set).map(c=>c.cardNumber)).size;
-                return owned>0?<div style={{borderTop:"1px solid #151528"}}><div style={{padding:"14px 20px"}}><SetProgressCard setName={result.set} owned={owned} total={SET_SIZES[result.set]} compact/></div></div>:null;
+                const ownedNumbers=new Set(portfolio.filter(c=>c.set===result.set).map(c=>c.cardNumber).filter(Boolean));
+                return ownedNumbers.size>0?<div style={{borderTop:"1px solid #151528"}}><div style={{padding:"14px 20px"}}><SetProgressCard setName={result.set} ownedNumbers={ownedNumbers} total={SET_SIZES[result.set]} compact/></div></div>:null;
               })()}
 
               {result.notes&&<div style={{padding:"12px 20px",borderBottom:"1px solid #151528"}}>
