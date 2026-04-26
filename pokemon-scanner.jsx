@@ -468,13 +468,93 @@ function Sparkline({points,color="#F5C518",width=70,height=22}){
   );
 }
 
+// ─── Portfolio card row ───────────────────────────────────────────────────────
+function PortfolioCard({card,idx,tc,hist,onDelete,onUpdatePrice}){
+  const[confirmDelete,setConfirmDelete]=useState(false);
+  const[updating,setUpdating]=useState(false);
+  const tcgImg=useTcgImage(card.name,card.set,false);
+  const imgSrc=tcgImg||card.image;
+
+  const handleUpdate=async()=>{
+    setUpdating(true);
+    await onUpdatePrice(card);
+    setUpdating(false);
+  };
+
+  const hasSpark=hist.length>=2;
+  const diffDKK=hasSpark?Math.round((hist[hist.length-1].price-hist[0].price)*USD_TO_DKK):null;
+  const up=diffDKK>=0;
+
+  return(
+    <div style={{background:"#0d0d22",border:`1px solid ${tc}22`,borderRadius:14,overflow:"hidden"}}>
+      {/* Main row */}
+      <div style={{display:"flex",alignItems:"stretch"}}>
+        {/* Image */}
+        <div style={{width:68,flexShrink:0,background:"#111128",display:"flex",alignItems:"center",justifyContent:"center",borderRight:`1px solid ${tc}11`,position:"relative",minHeight:90}}>
+          {imgSrc
+            ?<img src={imgSrc} alt={card.name} style={{width:"100%",height:"100%",objectFit:"contain",padding:4}}/>
+            :<div style={{fontSize:22,opacity:0.15}}>🃏</div>
+          }
+          <div style={{position:"absolute",bottom:3,left:0,right:0,textAlign:"center",fontSize:8,color:tc,fontWeight:700,textShadow:"0 1px 4px #000"}}>{idx+1}</div>
+        </div>
+        {/* Info */}
+        <div style={{flex:1,minWidth:0,padding:"12px 12px",display:"flex",flexDirection:"column",justifyContent:"center",gap:3}}>
+          <div style={{display:"flex",alignItems:"baseline",gap:5}}>
+            <p style={{margin:0,fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.name}</p>
+            <span style={{fontSize:9,color:tc,flexShrink:0}}>Nr. {card.cardNumber?.split("/")[0]}</span>
+          </div>
+          <div style={{display:"flex",gap:5,alignItems:"center"}}>
+            <span style={{fontSize:9,color:"#555"}}>{card.set}</span>
+            <span style={{fontSize:9,color:"#2a2a3a"}}>·</span>
+            <span style={{fontSize:9,color:"#555"}}>{card.condition}</span>
+          </div>
+          {hasSpark?(
+            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
+              <Sparkline points={hist} color={up?"#5BAD6F":"#FF6B35"}/>
+              <span style={{fontSize:9,fontWeight:700,color:up?"#5BAD6F":"#FF6B35"}}>{up?"+":""}{diffDKK} kr.</span>
+            </div>
+          ):(
+            <span style={{background:`${tc}11`,border:`1px solid ${tc}22`,borderRadius:4,padding:"1px 6px",fontSize:8,color:tc,alignSelf:"flex-start"}}>{card.rarity}</span>
+          )}
+        </div>
+        {/* Price */}
+        <div style={{flexShrink:0,padding:"12px 14px",display:"flex",alignItems:"center"}}>
+          <p style={{margin:0,fontSize:15,fontWeight:700,color:tc}}>{fmtDKK(card.estimatedValue)}</p>
+        </div>
+      </div>
+
+      {/* Action bar */}
+      <div style={{borderTop:`1px solid ${tc}11`,display:"flex"}}>
+        <button onClick={handleUpdate} disabled={updating} style={{
+          flex:1,padding:"9px 0",background:"transparent",border:"none",borderRight:`1px solid ${tc}11`,
+          color:updating?"#333":"#555",fontSize:9,cursor:updating?"wait":"pointer",
+          fontFamily:"'Space Mono',monospace",letterSpacing:"0.06em",
+        }}>{updating?"Opdaterer...":"↻ Opdater pris"}</button>
+
+        {confirmDelete?(
+          <>
+            <span style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#FF6B35",padding:"0 8px"}}>Sikker?</span>
+            <button onClick={()=>onDelete(card.id)} style={{padding:"9px 16px",background:"#2a0808",border:"none",borderLeft:"1px solid #440000",color:"#ff6666",fontSize:9,cursor:"pointer",fontFamily:"'Space Mono',monospace",fontWeight:700}}>Ja, slet</button>
+            <button onClick={()=>setConfirmDelete(false)} style={{padding:"9px 14px",background:"transparent",border:"none",borderLeft:`1px solid ${tc}11`,color:"#555",fontSize:9,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>Nej</button>
+          </>
+        ):(
+          <button onClick={()=>setConfirmDelete(true)} style={{
+            padding:"9px 16px",background:"transparent",border:"none",borderLeft:`1px solid ${tc}11`,
+            color:"#333",fontSize:9,cursor:"pointer",fontFamily:"'Space Mono',monospace",letterSpacing:"0.06em",
+          }}>🗑 Slet</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Portfolio view ───────────────────────────────────────────────────────────
 function Portfolio({cards,onScanNew,onDelete,priceHistory={},onUpdatePrice}){
   const total=cards.reduce((s,c)=>s+(c.estimatedValue||0),0);
   const sorted=[...cards].sort((a,b)=>b.estimatedValue-a.estimatedValue);
   return(
     <div>
-      <div style={{background:"linear-gradient(135deg,#F5C51811,#FF6B3511)",border:"1px solid #F5C51822",borderRadius:16,padding:"20px 20px",marginBottom:16}}>
+      <div style={{background:"linear-gradient(135deg,#F5C51811,#FF6B3511)",border:"1px solid #F5C51822",borderRadius:16,padding:"20px",marginBottom:16}}>
         <p style={{margin:"0 0 4px",fontSize:9,color:"#555",letterSpacing:"0.15em",textTransform:"uppercase"}}>Samlet Porteføljeværdi</p>
         <p style={{margin:"0 0 12px",fontSize:34,fontWeight:700,color:"#F5C518",textShadow:"0 0 30px #F5C51855"}}>{fmtDKK(total)}</p>
         <div style={{display:"flex",gap:16}}>
@@ -485,51 +565,14 @@ function Portfolio({cards,onScanNew,onDelete,priceHistory={},onUpdatePrice}){
       </div>
 
       <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-        {sorted.map((card,idx)=>{
-          const tc=typeColors[card.type]||"#888";
-          return(
-            <div key={card.id} style={{background:"#0d0d22",border:`1px solid ${tc}22`,borderRadius:14,overflow:"hidden",display:"flex",alignItems:"stretch"}}>
-              <div style={{width:72,flexShrink:0,background:"repeating-conic-gradient(#111128 0% 25%,#0d0d22 0% 50%) 0 0/12px 12px",display:"flex",alignItems:"center",justifyContent:"center",borderRight:`1px solid ${tc}11`,position:"relative",minHeight:80}}>
-                {card.image?(
-                  <img src={card.image} alt={card.name} style={{width:"100%",height:"100%",objectFit:"contain",filter:`drop-shadow(0 2px 8px rgba(0,0,0,0.8)) drop-shadow(0 0 6px ${tc}33)`,padding:4}}/>
-                ):(
-                  <div style={{fontSize:22,opacity:0.15}}>🃏</div>
-                )}
-                <div style={{position:"absolute",bottom:3,left:0,right:0,textAlign:"center",fontSize:8,color:tc,fontWeight:700,textShadow:"0 1px 4px #000"}}>{idx+1}</div>
-              </div>
-              <div style={{flex:1,minWidth:0,padding:"12px 12px",display:"flex",flexDirection:"column",justifyContent:"center",gap:3}}>
-                <div style={{display:"flex",alignItems:"baseline",gap:5}}>
-                  <p style={{margin:0,fontSize:12,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{card.name}</p>
-                  <span style={{fontSize:9,color:tc,flexShrink:0}}>Nr. {card.cardNumber?.split("/")[0]}</span>
-                </div>
-                <div style={{display:"flex",gap:5,alignItems:"center"}}>
-                  <span style={{fontSize:9,color:"#555"}}>{card.set}</span>
-                  <span style={{fontSize:9,color:"#2a2a3a"}}>·</span>
-                  <span style={{fontSize:9,color:"#555"}}>{card.condition}</span>
-                </div>
-                {(()=>{
-                  const hist=priceHistory[card.id]||[];
-                  if(hist.length<2) return <span style={{background:`${tc}11`,border:`1px solid ${tc}22`,borderRadius:4,padding:"1px 6px",fontSize:8,color:tc,alignSelf:"flex-start"}}>{card.rarity}</span>;
-                  const first=hist[0].price;
-                  const last=hist[hist.length-1].price;
-                  const diffDKK=Math.round((last-first)*USD_TO_DKK);
-                  const up=diffDKK>=0;
-                  return(
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginTop:2}}>
-                      <Sparkline points={hist} color={up?"#5BAD6F":"#FF6B35"}/>
-                      <span style={{fontSize:9,fontWeight:700,color:up?"#5BAD6F":"#FF6B35"}}>{up?"+":""}{diffDKK} kr.</span>
-                    </div>
-                  );
-                })()}
-              </div>
-              <div style={{textAlign:"right",flexShrink:0,padding:"12px 14px",display:"flex",flexDirection:"column",justifyContent:"center",gap:6}}>
-                <p style={{margin:0,fontSize:14,fontWeight:700,color:tc}}>{fmtDKK(card.estimatedValue)}</p>
-                <button onClick={()=>onUpdatePrice(card)} style={{background:"transparent",border:"1px solid #1e1e3a",borderRadius:6,color:"#555",fontSize:8,cursor:"pointer",padding:"3px 6px",fontFamily:"'Space Mono',monospace",letterSpacing:"0.05em"}}>↻ Opdater</button>
-                <button onClick={()=>onDelete(card.id)} style={{background:"transparent",border:"none",color:"#2a2a3a",fontSize:14,cursor:"pointer",padding:0,lineHeight:1}} title="Slet">🗑</button>
-              </div>
-            </div>
-          );
-        })}
+        {sorted.map((card,idx)=>(
+          <PortfolioCard
+            key={card.id} card={card} idx={idx}
+            tc={typeColors[card.type]||"#888"}
+            hist={priceHistory[card.id]||[]}
+            onDelete={onDelete} onUpdatePrice={onUpdatePrice}
+          />
+        ))}
       </div>
 
       <button onClick={onScanNew} style={{
