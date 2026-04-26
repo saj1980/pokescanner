@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { supabase } from "./src/supabase.js";
 
 // ─── Storage (localStorage wrapper) ──────────────────────────────────────────
 const storage = {
@@ -321,15 +322,23 @@ function Portfolio({cards,onScanNew}){
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function PokemonScanner(){
-  // Auth state (mock)
-  const[user,setUser]=useState(null); // null = guest
+  // Auth state
+  const[user,setUser]=useState(null);
   const[isPro,setIsPro]=useState(false);
   const[scansUsed,setScansUsed]=useState(0);
   const[portfolio,setPortfolio]=useState([]);
   const[showPaywall,setShowPaywall]=useState(false);
+  const[pendingCard,setPendingCard]=useState(null);
+
+  // Login form state
+  const[loginStep,setLoginStep]=useState("email"); // email | otp
+  const[loginEmail,setLoginEmail]=useState("");
+  const[loginOtp,setLoginOtp]=useState("");
+  const[loginError,setLoginError]=useState(null);
+  const[loginLoading,setLoginLoading]=useState(false);
 
   // App flow
-  const[appView,setAppView]=useState("home"); // home | camera | preview | result | portfolio | login
+  const[appView,setAppView]=useState("home");
   const[mode,setMode]=useState("demo");
 
   // Scan state
@@ -344,22 +353,44 @@ export default function PokemonScanner(){
 
   const fileRef=useRef();
 
-  // Load portfolio from storage
+  const loadPortfolio=async(userId)=>{
+    const{data}=await supabase.from("cards").select("*").eq("user_id",userId).order("scanned_at",{ascending:false});
+    if(data) setPortfolio(data.map(r=>({...r.data,id:r.id,scannedAt:r.scanned_at})));
+  };
+
+  const saveCardToDb=async(userId,card)=>{
+    const{data,error}=await supabase.from("cards").insert({user_id:userId,data:card}).select().single();
+    if(!error&&data) setPortfolio(p=>[{...data.data,id:data.id,scannedAt:data.scanned_at},...p]);
+    return !error;
+  };
+
+  // Auth state listener
   useEffect(()=>{
-    try{
-      const saved=storage.get("portfolio");
-      if(saved) setPortfolio(JSON.parse(saved.value));
-      const sc=storage.get("scansUsed");
-      if(sc) setScansUsed(parseInt(sc.value)||0);
-      const u=storage.get("user");
-      if(u){ const parsed=JSON.parse(u.value); setUser(parsed); setIsPro(parsed.pro||false); }
-    }catch(e){}
+    supabase.auth.getSession().then(({data:{session}})=>{
+      if(session?.user){setUser(session.user);loadPortfolio(session.user.id);}
+    });
+    const{data:{subscription}}=supabase.auth.onAuthStateChange(async(_event,session)=>{
+      if(session?.user){
+        setUser(session.user);
+        await loadPortfolio(session.user.id);
+      }else{
+        setUser(null);setPortfolio([]);
+      }
+    });
+    const sc=storage.get("scansUsed");
+    if(sc) setScansUsed(parseInt(sc.value)||0);
+    return()=>subscription.unsubscribe();
   },[]);
 
-  const savePortfolio=(cards)=>{
-    setPortfolio(cards);
-    storage.set("portfolio",JSON.stringify(cards));
-  };
+  // Save pending card after login
+  useEffect(()=>{
+    if(user&&pendingCard){
+      saveCardToDb(user.id,pendingCard).then(()=>{
+        setPendingCard(null);
+        setAppView("portfolio");
+      });
+    }
+  },[user,pendingCard]);
 
   const bumpScans=()=>{
     const n=scansUsed+1;
@@ -367,24 +398,28 @@ export default function PokemonScanner(){
     storage.set("scansUsed",String(n));
   };
 
-  const handleLogin=(name)=>{
-    const u={name,pro:false};
-    setUser(u);
-    storage.set("user",JSON.stringify(u));
-    setAppView("home");
+  const handleSendOtp=async()=>{
+    if(!loginEmail){setLoginError("Indtast en email.");return;}
+    setLoginLoading(true);setLoginError(null);
+    const{error}=await supabase.auth.signInWithOtp({email:loginEmail,options:{shouldCreateUser:true}});
+    setLoginLoading(false);
+    if(error){setLoginError(error.message);}else{setLoginStep("otp");}
   };
 
-  const handleUpgrade=()=>{
-    const u={...user,pro:true};
-    setUser(u);
-    setIsPro(true);
-    storage.set("user",JSON.stringify(u));
-    setShowPaywall(false);
+  const handleVerifyOtp=async()=>{
+    if(!loginOtp){setLoginError("Indtast koden.");return;}
+    setLoginLoading(true);setLoginError(null);
+    const{error}=await supabase.auth.verifyOtp({email:loginEmail,token:loginOtp,type:"email"});
+    setLoginLoading(false);
+    if(error){setLoginError("Ugyldig kode — prøv igen.");}
+    else{setLoginStep("email");setLoginOtp("");setAppView("home");}
   };
 
-  const handleLogout=()=>{
-    setUser(null);setIsPro(false);
-    storage.delete("user");
+  const handleUpgrade=()=>{setIsPro(true);setShowPaywall(false);};
+
+  const handleLogout=async()=>{
+    await supabase.auth.signOut();
+    setUser(null);setIsPro(false);setPortfolio([]);
     setAppView("home");
   };
 
@@ -439,10 +474,15 @@ export default function PokemonScanner(){
     finally{setLoading(false);}
   };
 
-  const saveToPortfolio=()=>{
-    if(!user){setAppView("login");return;}
-    const card={...result,id:`c${Date.now()}`,scannedAt:new Date().toISOString(),image:cleanImage};
-    savePortfolio([...portfolio,card]);
+  const saveToPortfolio=async()=>{
+    const card={...result,scannedAt:new Date().toISOString(),image:cleanImage};
+    if(!user){
+      setPendingCard(card);
+      setLoginStep("email");setLoginError(null);setLoginOtp("");
+      setAppView("login");
+      return;
+    }
+    await saveCardToDb(user.id,card);
     setAppView("portfolio");
   };
 
@@ -477,7 +517,7 @@ export default function PokemonScanner(){
             </button>}
             {user?(
               <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                <span style={{fontSize:10,color:isPro?"#5BAD6F":"#555"}}>{isPro?"PRO · ":""}{user.name}</span>
+                <span style={{fontSize:10,color:isPro?"#5BAD6F":"#555"}}>{isPro?"PRO · ":""}{user.email?.split("@")[0]}</span>
                 <button onClick={handleLogout} style={{background:"transparent",border:"none",color:"#333",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>ud</button>
               </div>
             ):(
@@ -547,20 +587,37 @@ export default function PokemonScanner(){
         {/* ── LOGIN ── */}
         {appView==="login"&&(
           <div style={{paddingTop:40}}>
-            <button onClick={()=>setAppView("home")} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:24}}>← Tilbage</button>
+            <button onClick={()=>{setAppView(pendingCard?"result":"home");}} style={{background:"transparent",border:"none",color:"#444",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",marginBottom:24}}>← Tilbage</button>
             <div style={{background:"#0d0d22",border:"1px solid #1e1e3a",borderRadius:20,padding:32,textAlign:"center"}}>
-              <div style={{fontSize:32,marginBottom:12}}>👤</div>
-              <h2 style={{margin:"0 0 8px",fontSize:16,fontWeight:700,color:"#fff"}}>Opret profil</h2>
-              <p style={{color:"#555",fontSize:11,margin:"0 0 24px",lineHeight:1.7}}>Gem dine kort og se din portefølje.<br/>Gratis at oprette.</p>
-              {["Mikkel","Sajid","Guest"].map(name=>(
-                <button key={name} onClick={()=>handleLogin(name)} style={{
-                  display:"block",width:"100%",padding:13,marginBottom:8,
-                  background:"#060610",border:"1px solid #1e1e3a",borderRadius:10,
-                  color:"#aaa",fontSize:11,cursor:"pointer",fontFamily:"'Space Mono',monospace",
-                  textAlign:"left",
-                }}>→ Fortsæt som <strong style={{color:"#fff"}}>{name}</strong></button>
-              ))}
-              <p style={{color:"#2a2a3a",fontSize:9,marginTop:16}}>Demo: vælg et navn for at simulere login</p>
+              <div style={{fontSize:32,marginBottom:12}}>⚡</div>
+              {loginStep==="email"&&<>
+                <h2 style={{margin:"0 0 8px",fontSize:16,fontWeight:700,color:"#fff"}}>Log ind</h2>
+                <p style={{color:"#555",fontSize:11,margin:"0 0 24px",lineHeight:1.7}}>
+                  {pendingCard?"Gem kortet i din portefølje — log ind med email.":"Gem dine kort og se din portefølje."}
+                </p>
+                <input type="email" value={loginEmail} onChange={e=>setLoginEmail(e.target.value)}
+                  onKeyDown={e=>e.key==="Enter"&&handleSendOtp()}
+                  placeholder="din@email.dk"
+                  style={{width:"100%",padding:"12px 14px",marginBottom:12,background:"#060610",border:"1px solid #1e1e3a",borderRadius:10,color:"#fff",fontSize:12,fontFamily:"'Space Mono',monospace",boxSizing:"border-box",outline:"none"}}
+                />
+                <button onClick={handleSendOtp} disabled={loginLoading} style={{width:"100%",padding:13,border:"none",borderRadius:10,background:"linear-gradient(135deg,#F5C518,#FF6B35)",color:"#000",fontSize:12,fontWeight:700,cursor:loginLoading?"wait":"pointer",fontFamily:"'Space Mono',monospace",marginBottom:8}}>
+                  {loginLoading?"Sender...":"Send engangskode →"}
+                </button>
+              </>}
+              {loginStep==="otp"&&<>
+                <h2 style={{margin:"0 0 8px",fontSize:16,fontWeight:700,color:"#fff"}}>Tjek din email</h2>
+                <p style={{color:"#555",fontSize:11,margin:"0 0 24px",lineHeight:1.7}}>Vi har sendt en 6-cifret kode til<br/><strong style={{color:"#fff"}}>{loginEmail}</strong></p>
+                <input type="text" value={loginOtp} onChange={e=>setLoginOtp(e.target.value.replace(/\D/g,"").slice(0,6))}
+                  onKeyDown={e=>e.key==="Enter"&&handleVerifyOtp()}
+                  placeholder="123456" maxLength={6}
+                  style={{width:"100%",padding:"12px 14px",marginBottom:12,background:"#060610",border:"1px solid #1e1e3a",borderRadius:10,color:"#fff",fontSize:20,fontFamily:"'Space Mono',monospace",boxSizing:"border-box",outline:"none",letterSpacing:"0.3em",textAlign:"center"}}
+                />
+                <button onClick={handleVerifyOtp} disabled={loginLoading} style={{width:"100%",padding:13,border:"none",borderRadius:10,background:"linear-gradient(135deg,#F5C518,#FF6B35)",color:"#000",fontSize:12,fontWeight:700,cursor:loginLoading?"wait":"pointer",fontFamily:"'Space Mono',monospace",marginBottom:8}}>
+                  {loginLoading?"Verificerer...":"Bekræft kode →"}
+                </button>
+                <button onClick={()=>{setLoginStep("email");setLoginOtp("");setLoginError(null);}} style={{background:"transparent",border:"none",color:"#444",fontSize:10,cursor:"pointer",fontFamily:"'Space Mono',monospace"}}>← Brug anden email</button>
+              </>}
+              {loginError&&<p style={{color:"#FF6B35",fontSize:11,marginTop:12}}>{loginError}</p>}
             </div>
           </div>
         )}
