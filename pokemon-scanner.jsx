@@ -89,25 +89,68 @@ function Btn({onClick,disabled,gradient,children,style={}}){
   );
 }
 
-// ─── Set tracker ─────────────────────────────────────────────────────────────
-function SetTracker({setName,portfolio}){
-  if(!setName) return null;
-  const total=SET_SIZES[setName];
-  const owned=new Set(portfolio.filter(c=>c.set===setName).map(c=>c.cardNumber)).size;
-  if(!owned) return null;
+// ─── Set progress ─────────────────────────────────────────────────────────────
+function bulbapediaUrl(setName){
+  return`https://bulbapedia.bulbagarden.net/wiki/${encodeURIComponent(setName.replace(/ /g,"_"))}_(TCG)`;
+}
+
+function setMotivation(owned,total,pct){
+  if(pct===100) return"Sæt komplet! 🎉";
+  const left=total-owned;
+  if(pct>=76) return`Kun ${left} kort tilbage! 😱`;
+  if(pct>=51) return"Mere end halvvejs! 🔥";
+  if(pct>=26) return"Du er halvvejs der! 💪";
+  if(pct>=11) return"Du er på vej! ⚡";
+  return"Godt begyndt! 🚀";
+}
+
+function SetProgressCard({setName,owned,total,compact=false}){
   const pct=total?Math.round((owned/total)*100):null;
+  const barColor=pct===100?"#5BAD6F":pct>=50?"#F5C518":"#C77DFF";
   return(
-    <div style={{padding:"14px 20px",borderTop:"1px solid #151528"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:8}}>
-        <p style={{margin:0,fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase"}}>Sæt-fremskridt · {setName}</p>
-        <span style={{fontSize:11,color:"#F5C518",fontWeight:700}}>{owned}{total?`/${total}`:""} kort</span>
-      </div>
-      {total&&(
-        <div style={{height:6,background:"#111128",borderRadius:3,overflow:"hidden"}}>
-          <div style={{width:`${pct}%`,height:"100%",background:"linear-gradient(90deg,#C77DFF,#F5C518)",borderRadius:3,transition:"width 1s ease",boxShadow:"0 0 8px #F5C51844"}}/>
+    <div style={{background:"#0d0d22",border:`1px solid ${barColor}33`,borderRadius:16,padding:compact?"14px 16px":"20px",marginBottom:compact?0:0}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+        <div style={{flex:1,minWidth:0}}>
+          <p style={{margin:0,fontSize:compact?10:13,fontWeight:700,color:"#fff",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{setName}</p>
+          {pct!==null&&<p style={{margin:"3px 0 0",fontSize:9,color:barColor}}>{setMotivation(owned,total,pct)}</p>}
         </div>
-      )}
-      {total&&<p style={{margin:"6px 0 0",fontSize:9,color:"#444"}}>{pct}% komplet{pct===100?" 🎉 — Sæt komplet!":""}</p>}
+        <a href={bulbapediaUrl(setName)} target="_blank" rel="noreferrer" onClick={e=>e.stopPropagation()} style={{flexShrink:0,marginLeft:10,fontSize:9,color:"#4A90D9",textDecoration:"none",border:"1px solid #4A90D933",borderRadius:6,padding:"3px 8px",whiteSpace:"nowrap"}}>Kortliste ↗</a>
+      </div>
+
+      <div style={{display:"flex",alignItems:"baseline",gap:6,marginBottom:10}}>
+        <span style={{fontSize:compact?28:36,fontWeight:700,color:barColor,textShadow:`0 0 24px ${barColor}55`,lineHeight:1}}>{owned}</span>
+        {total&&<span style={{fontSize:compact?11:14,color:"#444"}}>af {total} kort</span>}
+      </div>
+
+      {total&&<>
+        <div style={{height:compact?10:16,background:"#111128",borderRadius:20,overflow:"hidden",boxShadow:"inset 0 2px 6px #00000055"}}>
+          <div style={{width:`${pct}%`,height:"100%",background:`linear-gradient(90deg,#C77DFF88,${barColor})`,borderRadius:20,transition:"width 1.3s cubic-bezier(0.4,0,0.2,1)",boxShadow:`0 0 12px ${barColor}66`}}/>
+        </div>
+        <p style={{margin:"5px 0 0",fontSize:9,color:"#333",textAlign:"right"}}>{pct}%</p>
+      </>}
+    </div>
+  );
+}
+
+function SetsSection({portfolio}){
+  const sets=[...new Set(portfolio.map(c=>c.set).filter(Boolean))]
+    .map(name=>({
+      name,
+      owned:new Set(portfolio.filter(c=>c.set===name).map(c=>c.cardNumber)).size,
+      total:SET_SIZES[name]||null,
+    }))
+    .sort((a,b)=>{
+      const pa=a.total?(a.owned/a.total):0;
+      const pb=b.total?(b.owned/b.total):0;
+      return pb-pa;
+    });
+  if(!sets.length) return null;
+  return(
+    <div style={{marginTop:24}}>
+      <p style={{fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase",margin:"0 0 12px"}}>Dine sæt</p>
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {sets.map(s=><SetProgressCard key={s.name} setName={s.name} owned={s.owned} total={s.total}/>)}
+      </div>
     </div>
   );
 }
@@ -488,9 +531,8 @@ export default function PokemonScanner(){
                 <p style={{color:"#1e1e3a",fontSize:10,margin:0}}>Scan dit første kort for at komme i gang</p>
               </div>
             ):(
-              <div style={{marginTop:20}}>
-                <p style={{fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase",margin:"0 0 10px"}}>Portefølje preview</p>
-                <div style={{background:"#0d0d22",border:"1px solid #1a1a3a",borderRadius:14,padding:"14px 16px",cursor:"pointer"}} onClick={()=>setAppView("portfolio")}>
+              <>
+                <div style={{marginTop:16,background:"#0d0d22",border:"1px solid #1a1a3a",borderRadius:14,padding:"14px 16px",cursor:"pointer"}} onClick={()=>setAppView("portfolio")}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <div>
                       <p style={{margin:"0 0 2px",fontSize:18,fontWeight:700,color:"#F5C518"}}>{fmtDKK(portfolio.reduce((s,c)=>s+(c.estimatedValue||0),0))}</p>
@@ -499,7 +541,8 @@ export default function PokemonScanner(){
                     <span style={{color:"#333",fontSize:18}}>›</span>
                   </div>
                 </div>
-              </div>
+                <SetsSection portfolio={portfolio}/>
+              </>
             )}
           </>
         )}
@@ -594,7 +637,10 @@ export default function PokemonScanner(){
                 <PriceBar label="PSA 10"    value={prices.psa10}    max={maxPrice} color="#C77DFF" animate={animateBars}/>
               </div>
 
-              <SetTracker setName={result.set} portfolio={portfolio}/>
+              {result.set&&SET_SIZES[result.set]&&(()=>{
+                const owned=new Set(portfolio.filter(c=>c.set===result.set).map(c=>c.cardNumber)).size;
+                return owned>0?<div style={{borderTop:"1px solid #151528"}}><div style={{padding:"14px 20px"}}><SetProgressCard setName={result.set} owned={owned} total={SET_SIZES[result.set]} compact/></div></div>:null;
+              })()}
 
               {result.notes&&<div style={{padding:"12px 20px",borderBottom:"1px solid #151528"}}>
                 <p style={{margin:"0 0 6px",fontSize:9,color:"#444",letterSpacing:"0.15em",textTransform:"uppercase"}}>Ekspert Note</p>
