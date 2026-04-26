@@ -3,6 +3,8 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
+  console.log(`SCAN_EVENT ${new Date().toISOString()} ip=${req.headers['x-forwarded-for'] || 'unknown'} ua=${req.headers['user-agent']?.slice(0,80) || 'unknown'}`);
+
   let body = req.body;
   if (typeof body === "string") {
     try { body = JSON.parse(body); } catch { return res.status(400).json({ error: "Ugyldig JSON i body" }); }
