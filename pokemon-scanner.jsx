@@ -426,8 +426,11 @@ export default function PokemonScanner(){
         headers:{"Content-Type":"application/json"},
         body:JSON.stringify({imageBase64}),
       });
-      if(!response.ok){const e=await response.json();throw new Error(e.error||`API fejl ${response.status}`);}
-      const parsed=await response.json();
+      const text=await response.text();
+      if(!response.ok){let msg=`API fejl ${response.status}`;try{msg=JSON.parse(text).error||msg;}catch{}throw new Error(msg);}
+      let parsed;
+      try{parsed=JSON.parse(text);}catch{throw new Error(`Uventet svar: ${text.slice(0,120)}`);}
+
       setResult(parsed);
       bumpScans();
       setTimeout(()=>setAnimateBars(true),100);
